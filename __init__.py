@@ -6,10 +6,17 @@ app = Flask(__name__)
 def landing_page():
     return 'Welcome to the Landing Page!'
 
-@app.route('/login', methords=['POST'])
+@app.route('/login', methods=['POST'])
 def login():
-    data = request.get_json()
-    return data
+    print(request.get_json())
+    return {"message": "Login successful!"}
 
+'''
+@app.route('/get/login', methods=['GET'])
+def get_login():
+    print(request.args.get('username'))
+    return {"message": "This is a GET request for login."}
+'''
+    
 if __name__ == '__main__':
-    app.run()
+    app.run(debug=True)
