@@ -1,4 +1,5 @@
 from flask import Flask, request
+from user_process import compare_passwords, encrypt_password, search_for_existing_user, add_new_user
 import sqlite3
 
 app = Flask(__name__)
@@ -33,7 +34,7 @@ def login():
                     print("User not found!")
                 return {"message": "User not found!"}
             else:
-                if (request.get_json().get('password') == found_password):
+                if (compare_passwords(request.get_json().get('password'), found_password)):
                     signed_user = request.get_json().get('username')
                     if debugging:
                         print("Signed in user: ", signed_user)
@@ -64,7 +65,7 @@ def register():
             else:
                 if debugging:
                     print("Registering new user: ", request.get_json().get('username'))
-                if add_new_user(request.get_json().get('username'), request.get_json().get('password')):
+                if add_new_user(request.get_json().get('username'), encrypt_password(request.get_json().get('password'))):
                     signed_user = request.get_json().get('username')
                     if debugging:
                         print("New user registered and signed in: ", signed_user)
