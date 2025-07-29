@@ -1,10 +1,13 @@
 from flask import Flask, request
 from user_process import compare_passwords, encrypt_password, search_for_existing_user, add_new_user
 import sqlite3
+from dotenv import load_dotenv
+import os
 
 app = Flask(__name__)
+load_dotenv()
 
-debugging = True
+debugging = os.getenv("debugging", "false").lower() == "true"
 
 signed_user = "guest"
 
@@ -69,12 +72,12 @@ def register():
                     signed_user = request.get_json().get('username')
                     if debugging:
                         print("New user registered and signed in: ", signed_user)
-                    return {"message": "Registration successful!"}
+                    return {"message": "Registration successful! " + signed_user}
                 else:
                     if debugging:
                         print("Failed to register new user: ", request.get_json().get('username'))
                     return {"message": "Registration failed!"}
-        return {"message": "Page refreshed. Registration attempt nevers tried."}
+        return {"message": "Page refreshed. Registration attempt never tried."}
 
 @app.route('/chatbot', methods=['POST', 'GET'])
 def chatbot():
