@@ -105,7 +105,7 @@ def add_new_user(username, password):
     db_cursor = database.cursor()
     
     try:
-        db_cursor.execute("INSERT INTO user (username, password) VALUES (?, ?)", (username, password))
+        db_cursor.execute("INSERT INTO user (username, password) VALUES (" , username , "," , password , ")")
         database.commit()
         return True
     except sqlite3.Error as e:
