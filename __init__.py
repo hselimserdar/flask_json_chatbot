@@ -61,20 +61,20 @@ def login():
             print("Post request: ", request.get_json())
             print("Get request: ", request.args)
         if (request.args.get('login_attempt') == "true"):
-            found_password = search_for_existing_user(request.get_data('username'))
+            found_password = search_for_existing_user(request.get_json().get('username'))
             if(found_password is None):
                 if debugging:
                     print("User not found!")
                 return {"message": "User not found!"}
             else:
-                if (request.get_data('password') == found_password):
-                    signed_user = request.get_data('username')
+                if (request.get_json().get('password') == found_password):
+                    signed_user = request.get_json().get('username')
                     if debugging:
                         print("Signed in user: ", signed_user)
                     return {"message": "Login successful!"}
                 else:
                     if debugging:
-                        print("Incorrect password for user: ", request.get_data('username'))
+                        print("Incorrect password for user: ", request.get_json().get('username'))
                     return {"message": "Incorrect password!"}
         return {"message": "Page refreshed. Login attempt never tried."}
 
@@ -90,24 +90,24 @@ def register():
             print("Post request: ", request.get_json())
             print("Get request: ", request.args)
         if (request.args.get('register_attempt') == "true"):
-            found_password = search_for_existing_user(request.get_data('username'))
+            found_password = search_for_existing_user(request.get_json().get('username'))
             if(found_password is not None):
                 if debugging:
                     print("Same username is found on the database!")
                 return {"message": "User already exists!"}
             else:
                 if debugging:
-                    print("Registering new user: ", request.get_data('username'))
-                if add_new_user(request.get_data('username'), request.get_data('password')):
-                    signed_user = request.get_data('username')
+                    print("Registering new user: ", request.get_json().get('username'))
+                if add_new_user(request.get_json().get('username'), request.get_json().get('password')):
+                    signed_user = request.get_json().get('username')
                     if debugging:
                         print("New user registered and signed in: ", signed_user)
                     return {"message": "Registration successful!"}
                 else:
                     if debugging:
-                        print("Failed to register new user: ", request.get_data('username'))
+                        print("Failed to register new user: ", request.get_json().get('username'))
                     return {"message": "Registration failed!"}
-        return {"message": "Page refreshed. Registration attempt never tried."}
+        return {"message": "Page refreshed. Registration attempt nevers tried."}
 
 @app.route('/chatbot', methods=['POST', 'GET'])
 def chatbot():
