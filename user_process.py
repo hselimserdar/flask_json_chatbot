@@ -19,7 +19,9 @@ def encrypt_password(user_key, input_password):
 def compare_passwords(username, input_password):
     database = sqlite3.connect('database.sqlite')
     db_cursor = database.cursor()
-    execute = "SELECT username, password FROM user"
+    execute = "SELECT username, password, encryption_key FROM user"
+    stored_tag = ""
+    user_key = ""
     try:
         db_cursor.execute(execute)
         for user in db_cursor.fetchall():
@@ -27,6 +29,10 @@ def compare_passwords(username, input_password):
                 stored_tag = user[1]
                 user_key = user[2]
         recalculated = encrypt_password(user_key, input_password)
+        if debugging:
+            print("Recalculated tag:", recalculated)
+            print("Stored tag:", stored_tag)
+            print("User key:", user_key)
         return secrets.compare_digest(recalculated, stored_tag)
     except sqlite3.Error as e:
         print("SQLite error occurred:", e)
@@ -34,7 +40,6 @@ def compare_passwords(username, input_password):
     finally:
         db_cursor.close()
         database.close()
-
 
 
 def search_for_existing_user(username): #returns password if user exists
@@ -63,7 +68,7 @@ def add_new_user(username, password):
     encrypted_password = encrypt_password(encryption_key, password)
     
     try:
-        execute = "INSERT INTO user (username, password, encryption_key) VALUES ('" + str(username) + "', '" + str(password) + "', '" + str(encryption_key) + "')"
+        execute = "INSERT INTO user (username, password, encryption_key) VALUES ('" + str(username) + "', '" + encrypted_password + "', '" + str(encryption_key) + "')"
         db_cursor.execute(execute)
         database.commit()
         return True
