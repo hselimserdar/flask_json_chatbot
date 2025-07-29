@@ -33,7 +33,7 @@ def add_new_user(username, password):
     db_cursor = database.cursor()
     
     try:
-        temp = "INSERT INTO user (username, password) VALUES (" + str(username) + ", " + str(password) + ")"
+        temp = "INSERT INTO user (username, password) VALUES ('" + str(username) + "', '" + str(password) + "')"
         print (temp)
         db_cursor.execute(temp)
         database.commit()
