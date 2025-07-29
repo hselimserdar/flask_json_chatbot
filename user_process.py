@@ -1,33 +1,48 @@
+import base64
+import hashlib
+import hmac
 import os
+import secrets
 import sqlite3
-import sys
 
-from cryptography.fernet import Fernet
 from dotenv import load_dotenv
 
 load_dotenv()
 
 debugging = os.getenv("debugging", "false").lower() == "true"
-FERNET_SECRET_KEY = os.getenv("FERNET_SECRET_KEY")
-assert FERNET_SECRET_KEY
-FERNET = Fernet(FERNET_SECRET_KEY)
 
-def encrypt_password(input_password):
-    f = FERNET
-    return f.encrypt(input_password.encode()).decode()
+def encrypt_password(user_key, input_password):
+    key_bytes = base64.urlsafe_b64decode(user_key.encode('ascii'))
+    tag = hmac.new(key_bytes, input_password.encode('utf-8'), hashlib.sha256).digest()
+    return base64.urlsafe_b64encode(tag).decode('ascii')
 
-def decrypt_password(input_password):
-    f = FERNET
-    return f.decrypt(input_password.encode("utf-8")).decode("utf-8")
+def compare_passwords(username, input_password):
+    database = sqlite3.connect('database.sqlite')
+    db_cursor = database.cursor()
+    execute = "SELECT username, password FROM user"
+    try:
+        db_cursor.execute(execute)
+        for user in db_cursor.fetchall():
+            if user[0] == username:
+                stored_tag = user[1]
+                user_key = user[2]
+        recalculated = encrypt_password(user_key, input_password)
+        return secrets.compare_digest(recalculated, stored_tag)
+    except sqlite3.Error as e:
+        print("SQLite error occurred:", e)
+        return False
+    finally:
+        db_cursor.close()
+        database.close()
 
-def compare_passwords(input_password, stored_password):
-    return decrypt_password(stored_password) == input_password
+
 
 def search_for_existing_user(username): #returns password if user exists
     database = sqlite3.connect('database.sqlite')
     db_cursor = database.cursor()
+    execute = "SELECT username, password FROM user"
     try:
-        db_cursor.execute("SELECT username, password FROM user")
+        db_cursor.execute(execute)
         for user in db_cursor.fetchall():
             if user[0] == username:
                 if debugging:
@@ -44,11 +59,12 @@ def search_for_existing_user(username): #returns password if user exists
 def add_new_user(username, password):
     database = sqlite3.connect('database.sqlite')
     db_cursor = database.cursor()
+    encryption_key = base64.urlsafe_b64encode(os.urandom(32)).decode('ascii')
+    encrypted_password = encrypt_password(encryption_key, password)
     
     try:
-        temp = "INSERT INTO user (username, password) VALUES ('" + str(username) + "', '" + str(password) + "')"
-        print (temp)
-        db_cursor.execute(temp)
+        execute = "INSERT INTO user (username, password, encryption_key) VALUES ('" + str(username) + "', '" + str(password) + "', '" + str(encryption_key) + "')"
+        db_cursor.execute(execute)
         database.commit()
         return True
     except sqlite3.Error as e:

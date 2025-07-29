@@ -68,7 +68,7 @@ def register():
             else:
                 if debugging:
                     print("Registering new user: ", request.get_json().get('username'))
-                if add_new_user(request.get_json().get('username'), encrypt_password(request.get_json().get('password'))):
+                if add_new_user(request.get_json().get('username'), request.get_json().get('password')):
                     signed_user = request.get_json().get('username')
                     if debugging:
                         print("New user registered and signed in: ", signed_user)
