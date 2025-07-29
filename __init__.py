@@ -83,7 +83,7 @@ if __name__ == '__main__':
     app.run(debug=True)
 
 def search_for_existing_user(username): #returns password if user exists
-    database = sqlite3.connect('database.db')
+    database = sqlite3.connect('database.sqlite')
     db_cursor = database.cursor()
     try:
         db_cursor.execute("SELECT username, password FROM user")
@@ -101,11 +101,11 @@ def search_for_existing_user(username): #returns password if user exists
     return None
 
 def add_new_user(username, password):
-    database = sqlite3.connect('database.db')
+    database = sqlite3.connect('database.sqlite')
     db_cursor = database.cursor()
     
     try:
-        db_cursor.execute("INSERT INTO user (username, password) VALUES (" , username , "," , password , ")")
+        db_cursor.execute("INSERT INTO user (username, password) VALUES (" , username , ", " , password , ")")
         database.commit()
         return True
     except sqlite3.Error as e:
