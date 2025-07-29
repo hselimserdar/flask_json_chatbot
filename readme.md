@@ -1,0 +1,1 @@
+Rename .env.example to .env before running the code. Do not forget to change the private keys
