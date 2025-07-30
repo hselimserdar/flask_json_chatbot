@@ -6,13 +6,14 @@ import os
 import jwt
 import datetime
 
-# Load environment variables\oload_dotenv()
+load_dotenv()
+
 
 debugging = os.getenv("debugging", "false").lower() == "true"
 flaskDebugging = os.getenv("flaskDebugging", "false").lower() == "true"
 
 app = Flask(__name__)
-# Unified secret-key name
+
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret-change-me')
 
 if debugging:
@@ -107,7 +108,7 @@ def register():
 @app.route('/chatbot', methods=['GET', 'POST'])
 def chatbot():
     user = get_current_user() or "guest"
-    return {"message": f"Hello {user}, your request was received!"}
+    return {"message": f"Hello {user}, your request is received!"}
 
 if __name__ == '__main__':
     app.run(debug=flaskDebugging)
