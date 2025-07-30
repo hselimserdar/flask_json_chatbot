@@ -31,7 +31,7 @@ def login():
     if user:
         if debugging:
             print(f"Login called but user {user} already authenticated, redirecting")
-        return redirect('/chatbot')
+        return #redirect('/chatbot')    ##It will redirect to the chatbot page if the user is already authenticated - frontend will handle this
 
     data = request.get_json() or {}
     if debugging:
@@ -69,7 +69,7 @@ def register():
     if user:
         if debugging:
             print(f"Register called but user {user} already authenticated, redirecting")
-        return redirect('/chatbot')
+        return #redirect('/chatbot')    ##It will redirect to the chatbot page if the user is already authenticated - frontend will handle this
 
     data = request.get_json() or {}
     if debugging:
@@ -107,8 +107,6 @@ def register():
 @app.route('/chatbot', methods=['GET', 'POST'])
 def chatbot():
     user = get_current_user() or "guest"
-    if debugging:
-        print(f"Chatbot called by {user}, payload:", request.get_json())
     return {"message": f"Hello {user}, your request was received!"}
 
 if __name__ == '__main__':
