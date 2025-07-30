@@ -1,80 +1,120 @@
+# user_process.py
 import base64
 import hashlib
 import hmac
 import os
 import secrets
 import sqlite3
-
+import jwt
+from flask import request, current_app
+from functools import wraps
 from dotenv import load_dotenv
 
 load_dotenv()
-
 debugging = os.getenv("debugging", "false").lower() == "true"
+
+
+def get_current_user():
+    auth = request.headers.get('Authorization', '')
+    if debugging:
+        print("Authorization header:", auth)
+
+    if auth.startswith('Bearer '):
+        token = auth.split()[1]
+        try:
+            payload = jwt.decode(
+                token,
+                current_app.config['JWT_SECRET_KEY'],
+                algorithms=['HS256']
+            )
+            if debugging:
+                print("Token payload:", payload)
+            return payload.get('sub')
+        except jwt.ExpiredSignatureError:
+            if debugging:
+                print("Token has expired")
+        except jwt.InvalidTokenError:
+            if debugging:
+                print("Invalid token")
+    return None
+
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        user = get_current_user()
+        if not user:
+            if debugging:
+                print("token_required: no valid user, returning 401")
+            return {"message": "Token is missing or invalid!"}, 401
+        if debugging:
+            print("token_required: authenticated user =", user)
+        return f(user, *args, **kwargs)
+    return decorated
+
 
 def encrypt_password(user_key, input_password):
     key_bytes = base64.urlsafe_b64decode(user_key.encode('ascii'))
-    tag = hmac.new(key_bytes, input_password.encode('utf-8'), hashlib.sha256).digest()
+    tag = hmac.new(
+        key_bytes,
+        input_password.encode('utf-8'),
+        hashlib.sha256
+    ).digest()
     return base64.urlsafe_b64encode(tag).decode('ascii')
 
+
 def compare_passwords(username, input_password):
-    database = sqlite3.connect('database.sqlite')
-    db_cursor = database.cursor()
-    execute = "SELECT username, password, encryption_key FROM user"
-    stored_tag = ""
-    user_key = ""
+    conn = sqlite3.connect('database.sqlite')
+    cur = conn.cursor()
     try:
-        db_cursor.execute(execute)
-        for user in db_cursor.fetchall():
-            if user[0] == username:
-                stored_tag = user[1]
-                user_key = user[2]
+        cur.execute("SELECT username, password, encryption_key FROM user")
+        stored_tag = user_key = ""
+        for row in cur.fetchall():
+            if row[0] == username:
+                stored_tag, user_key = row[1], row[2]
         recalculated = encrypt_password(user_key, input_password)
         if debugging:
             print("Recalculated tag:", recalculated)
             print("Stored tag:", stored_tag)
             print("User key:", user_key)
         return secrets.compare_digest(recalculated, stored_tag)
-    except sqlite3.Error as e:
-        print("SQLite error occurred:", e)
-        return False
     finally:
-        db_cursor.close()
-        database.close()
+        cur.close()
+        conn.close()
 
 
-def search_for_existing_user(username): #returns password if user exists
-    database = sqlite3.connect('database.sqlite')
-    db_cursor = database.cursor()
-    execute = "SELECT username, password FROM user"
+def search_for_existing_user(username):
+    conn = sqlite3.connect('database.sqlite')
+    cur = conn.cursor()
     try:
-        db_cursor.execute(execute)
-        for user in db_cursor.fetchall():
-            if user[0] == username:
+        cur.execute("SELECT username, password FROM user")
+        for row in cur.fetchall():
+            if row[0] == username:
                 if debugging:
-                    print("User found: ", user)
-                    return user[1]
-    except sqlite3.Error as e:
-        print("SQLite error occurred:", e)
-        return None
+                    print("User found:", row)
+                return row[1]
     finally:
-        db_cursor.close()
-        database.close()
+        cur.close()
+        conn.close()
     return None
 
+
 def add_new_user(username, password):
-    database = sqlite3.connect('database.sqlite')
-    db_cursor = database.cursor()
+    conn = sqlite3.connect('database.sqlite')
+    cur = conn.cursor()
     encryption_key = base64.urlsafe_b64encode(os.urandom(32)).decode('ascii')
     encrypted_password = encrypt_password(encryption_key, password)
-    
     try:
-        execute = "INSERT INTO user (username, password, encryption_key) VALUES ('" + str(username) + "', '" + encrypted_password + "', '" + str(encryption_key) + "')"
-        db_cursor.execute(execute)
-        database.commit()
+        cur.execute(
+            "INSERT INTO user (username, password, encryption_key) VALUES (?, ?, ?)",
+            (username, encrypted_password, encryption_key)
+        )
+        conn.commit()
         return True
     except sqlite3.Error as e:
-        print("SQLite error occurred:", e)
+        if debugging:
+            print("SQLite error occurred:", e)
         return False
     finally:
-        db_cursor.close()
-        database.close()
+        cur.close()
+        conn.close()
