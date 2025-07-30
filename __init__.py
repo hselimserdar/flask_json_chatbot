@@ -21,7 +21,7 @@ if debugging:
     print("Using JWT_SECRET_KEY:", app.config['JWT_SECRET_KEY'])
 
 @app.route('/')
-def landing():
+def home():
     if debugging:
         print("Landing page accessed")
     return {"message": "Welcome to the Landing Page!"}
@@ -32,7 +32,7 @@ def login():
     if user:
         if debugging:
             print(f"Login called but user {user} already authenticated, redirecting")
-        return #redirect('/chatbot')    ##It will redirect to the chatbot page if the user is already authenticated - frontend will handle this
+        return {"message" : "redirecting"} #redirect('/chatbot')    ##It will redirect to the chatbot page if the user is already authenticated - frontend will handle this
 
     data = request.get_json() or {}
     if debugging:
@@ -70,7 +70,7 @@ def register():
     if user:
         if debugging:
             print(f"Register called but user {user} already authenticated, redirecting")
-        return #redirect('/chatbot')    ##It will redirect to the chatbot page if the user is already authenticated - frontend will handle this
+        return {"message" : "redirecting"} #redirect('/chatbot')    ##It will redirect to the chatbot page if the user is already authenticated - frontend will handle this
 
     data = request.get_json() or {}
     if debugging:
