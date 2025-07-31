@@ -1,5 +1,5 @@
 # init.py
-from flask import Flask, redirect, request
+from flask import Flask, request
 from chatbot_manage import chat_with_gemini, create_session_for_user, get_messages_for_session, handle_message, is_session_owner, print_sessions
 from user_process import compare_passwords, get_current_user, search_for_existing_user, add_new_user
 from dotenv import load_dotenv

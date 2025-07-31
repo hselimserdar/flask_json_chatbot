@@ -2,15 +2,10 @@ import datetime
 import sqlite3
 import os
 from dotenv import load_dotenv
+from gemini_api import call_gemini_api
 
 load_dotenv()
 debugging = os.getenv("debugging", "false").lower() == "true"
-
-def call_gemini_api(conversation):
-    
-    if debugging:
-        print("Calling Gemini API with conversation:", conversation)
-    return "This is a mock response from Gemini API."
 
 def create_session_for_user(username, title=None):
     conn = sqlite3.connect('database.sqlite')
