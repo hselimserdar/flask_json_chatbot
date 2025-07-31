@@ -116,9 +116,14 @@ def session():
     else:
         if debugging:
             print(f"Chatbot accessed by user {user}, returning session info")
-        return print_sessions(user)
-    
-@app.route('/chatbot/message/session', methods=['GET'])
+        printed_sessions = print_sessions(user)
+        if not printed_sessions:
+            if debugging:
+                print(f"No sessions found for user {user}")
+            return {"message": "No active sessions found for user: " + str(user)}, 404
+        return {"sessions": printed_sessions}
+
+@app.route('/chatbot/message', methods=['GET'])
 def session_messages():
     user = get_current_user() or "guest"
     session_id = request.args.get('session')
@@ -142,7 +147,7 @@ def session_messages():
         else:
             if debugging:
                 print(f"User {user} is authorized to access messages in session: {session_id}")
-                return get_messages_for_session(session_id)
+            return {" session_id": session_id, "messages": get_messages_for_session(session_id)}
 
 @app.route('/chatbot', methods=['POST', 'GET'])
 def chatbot():
@@ -176,7 +181,7 @@ def chatbot():
                 if debugging:
                     print(f"User {user} is not authorized to access session: {session_id}")
                 return {"message": "Forbidden: You do not have access to this session."}, 403
-            return handle_message(message, chat_with_gemini(user, message, session_id=session_id))
+            return handle_message(session_id, message, chat_with_gemini(user, message, session_id=session_id))
 
 if __name__ == '__main__':
     app.run(debug=flaskDebugging)

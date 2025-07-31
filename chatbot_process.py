@@ -7,7 +7,7 @@ load_dotenv()
 debugging = os.getenv("debugging", "false").lower() == "true"
 
 def call_gemini_api(conversation):
-    #Placeholder for the actual API call to Gemini
+    
     if debugging:
         print("Calling Gemini API with conversation:", conversation)
     return "This is a mock response from Gemini API."
@@ -221,8 +221,9 @@ def get_messages_for_session(session_id):
         cur.close()
         conn.close()
 
-def handle_message(message, reply):
+def handle_message(session_id, message, reply):
     return {
-        "user": message,
-        "chatbot": reply
+        " user": message,
+        "chatbot": reply,
+        "session_id": session_id
     }
