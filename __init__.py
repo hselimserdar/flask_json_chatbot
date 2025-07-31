@@ -1,5 +1,6 @@
 # init.py
 from flask import Flask, redirect, request
+from chatbot_process import chat_with_gemini, create_session_for_user, get_messages_for_session, handle_message, is_session_owner, print_sessions
 from user_process import compare_passwords, get_current_user, search_for_existing_user, add_new_user
 from dotenv import load_dotenv
 import os
@@ -105,10 +106,77 @@ def register():
         print(f"Issued token for {username}: {token}")
     return {"token": token}
 
-@app.route('/chatbot', methods=['GET', 'POST'])
+@app.route('/chatbot/session', methods=['GET'])
+def session():
+    user = get_current_user() or "guest"
+    if user == "guest":
+        if debugging:
+            print("Chatbot accessed by guest user, no session available")
+        return {"message": "No active session available for guest users."}, 404
+    else:
+        if debugging:
+            print(f"Chatbot accessed by user {user}, returning session info")
+        return print_sessions(user)
+    
+@app.route('/chatbot/message/session', methods=['GET'])
+def session_messages():
+    user = get_current_user() or "guest"
+    session_id = request.args.get('session')
+    if debugging:
+        print(f"session_messages called by user={user}, session_id={session_id}")
+    if not session_id or session_id == "" or session_id == "new":
+        if debugging:
+            print("No session ID provided in request")
+        return {"message": "Session ID is required."}, 400
+    if user == "guest":
+        if debugging:
+            print("User is a guest, accessing session messages is not permitted")
+        return {"message": "Forbidden: Guest users cannot access session messages."}, 403
+    else:
+        if debugging:
+            print(f"Checking if user {user} has authorized access to messages in session: {session_id}")
+        if not is_session_owner(user, session_id):
+            if debugging:
+                print(f"User {user} is not authorized to access session: {session_id}")
+            return {"message": "Forbidden: You do not have access to this session."}, 403
+        else:
+            if debugging:
+                print(f"User {user} is authorized to access messages in session: {session_id}")
+                return get_messages_for_session(session_id)
+
+@app.route('/chatbot', methods=['POST', 'GET'])
 def chatbot():
     user = get_current_user() or "guest"
-    return {"message": f"Hello {user}, your request is received!"}
+    message = request.get_json().get('message')
+    session_id = request.args.get('session')
+    if user == "guest":
+        if not session_id == "guest":
+            if debugging:
+                print("Guest user attempted to create or access a session, which is not allowed")
+            return {"message": "Guest users cannot create or access sessions."}, 403
+        if debugging:
+            print("Chatbot accessed by guest user, sessions will not be saved")
+        return handle_message(message, chat_with_gemini(None, message, session_id=None))
+    else:
+        if debugging:
+            print(f"Chatbot accessed by user {user}, session_id={session_id}, message={message}")
+        if not session_id or session_id == "" or session_id == "new":
+            if debugging:
+                print("No session ID provided, creating a new session")
+            session_id = create_session_for_user(user)
+            if not session_id:
+                if debugging:
+                    print("Failed to create a new session for user:", user)
+                return {"message": "Failed to create a new session."}, 500
+            return handle_message(message, chat_with_gemini(user, message, session_id=session_id))
+        else:
+            if debugging:
+                print(f"User {user} is trying to access session: {session_id}")
+            if not is_session_owner(user, session_id):
+                if debugging:
+                    print(f"User {user} is not authorized to access session: {session_id}")
+                return {"message": "Forbidden: You do not have access to this session."}, 403
+            return handle_message(message, chat_with_gemini(user, message, session_id=session_id))
 
 if __name__ == '__main__':
     app.run(debug=flaskDebugging)
