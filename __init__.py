@@ -161,7 +161,7 @@ def chatbot():
             return {"message": "Guest users cannot create or access sessions."}, 403
         if debugging:
             print("Chatbot accessed by guest user, sessions will not be saved")
-        return handle_message(message, chat_with_gemini(None, message, session_id=None))
+        return handle_message(None,message, chat_with_gemini(None, message, session_id=None))
     else:
         if debugging:
             print(f"Chatbot accessed by user {user}, session_id={session_id}, message={message}")
@@ -173,7 +173,7 @@ def chatbot():
                 if debugging:
                     print("Failed to create a new session for user:", user)
                 return {"message": "Failed to create a new session."}, 500
-            return handle_message(message, chat_with_gemini(user, message, session_id=session_id))
+            return handle_message(session_id, message, chat_with_gemini(user, message, session_id=session_id))
         else:
             if debugging:
                 print(f"User {user} is trying to access session: {session_id}")

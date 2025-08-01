@@ -145,9 +145,10 @@ def chat_with_gemini(username, message, session_id=None):
     stateful = bool(username and session_id and is_session_owner(username, session_id))
     history = get_messages_for_session(session_id) if stateful else []
 
-    convo = []
-    for msg in history:
-        convo.append({"author": msg["sender"], "content": msg["content"]})
+    convo = [
+        {"author": msg["sender"], "content": msg["content"]}
+        for msg in history
+    ]
 
     convo.append({"author": "user", "content": message})
 
@@ -156,9 +157,13 @@ def chat_with_gemini(username, message, session_id=None):
     if stateful and not history:
         title_prompt = [
             {"author": "system", "content": "Give me a very short (3–5 word) title summarizing this conversation so far."},
-            {"author": "bot",    "content": reply}
+            {"author": "model",  "content": reply}
         ]
-        generated_title = call_gemini_api(title_prompt).strip().strip('"')
+        title_candidate = call_gemini_api(title_prompt)
+        if title_candidate:
+            generated_title = title_candidate.strip().strip('"')
+        else:
+            generated_title = "New Conversation"
         update_session_title(session_id, generated_title)
 
     if stateful:
@@ -217,6 +222,8 @@ def get_messages_for_session(session_id):
         conn.close()
 
 def handle_message(session_id, message, reply):
+    if session_id is None:
+        session_id = "guest"
     return {
         " user": message,
         "chatbot": reply,
