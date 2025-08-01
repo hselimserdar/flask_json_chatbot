@@ -161,7 +161,12 @@ def chatbot():
             return {"message": "Guest users cannot create or access sessions."}, 403
         if debugging:
             print("Chatbot accessed by guest user, sessions will not be saved")
-        return handle_message(None,message, chat_with_gemini(None, message, session_id=None))
+        reply = chat_with_gemini(user, message, session_id=None, first_message=True)
+        if not reply:
+            if debugging:
+                print("Failed to get a reply from Gemini API")
+            return {"message": "Failed to get a reply from the API."}, 500            
+        return handle_message(session_id, message, reply)
     else:
         if debugging:
             print(f"Chatbot accessed by user {user}, session_id={session_id}, message={message}")
@@ -173,7 +178,12 @@ def chatbot():
                 if debugging:
                     print("Failed to create a new session for user:", user)
                 return {"message": "Failed to create a new session."}, 500
-            return handle_message(session_id, message, chat_with_gemini(user, message, session_id=session_id))
+            reply = chat_with_gemini(user, message, session_id=session_id, first_message=True)
+            if not reply:
+                if debugging:
+                    print("Failed to get a reply from Gemini API")
+                return {"message": "Failed to get a reply from the API."}, 500
+            return handle_message(session_id, message, reply)
         else:
             if debugging:
                 print(f"User {user} is trying to access session: {session_id}")
@@ -181,7 +191,12 @@ def chatbot():
                 if debugging:
                     print(f"User {user} is not authorized to access session: {session_id}")
                 return {"message": "Forbidden: You do not have access to this session."}, 403
-            return handle_message(session_id, message, chat_with_gemini(user, message, session_id=session_id))
+            reply = chat_with_gemini(user, message, session_id=session_id, first_message=False)
+            if not reply:
+                if debugging:
+                    print("Failed to get a reply from Gemini API for session:", session_id)
+                return {"message": "Failed to get a reply from the API."}, 500
+            return handle_message(session_id, message, reply)
 
 if __name__ == '__main__':
     app.run(debug=flaskDebugging)
