@@ -1,51 +1,47 @@
 import os
-import requests
-from typing import List, Dict, Any
+from google import genai
+from google.genai import types
+
+# 1) Install the SDK: pip install google-genai
+# 2) Configure your API key (or use GOOGLE_API_KEY env var)
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+client = genai.Client()
 
 def call_gemini_api(
-    messages: List[Dict[str, str]],
+    messages: list[dict[str, str]],
     model: str = "gemini-2.5-pro",
     temperature: float = 0.3,
-    candidate_count: int = 1,
-    timeout: float = 30.0
+    candidate_count: int = 1
 ) -> str:
     """
-    Send a multi-turn chat to the Gemini API and return the assistant’s reply.
+    Send a multi-turn chat to Gemini via the Google Gen AI SDK.
 
     Parameters:
-      - messages: List of dicts, each with:
-          • "author": "system", "user", or "assistant"
-          • "content": the text string
-      - model:            the Gemini model code (default "gemini-2.5-pro", free tier)
-      - temperature:      sampling temperature
-      - candidate_count:  number of reply candidates to request
-      - timeout:          HTTP request timeout in seconds
+      - messages: List of {"author": "user"|"bot", "content": str}
+      - model:       Gemini model code (default "gemini-2.5-pro", free tier)
+      - temperature: Sampling temperature (0.0–1.0)
+      - candidate_count: How many reply variants to request
 
     Returns:
-      - str: the content of the first reply candidate
+      - The assistant’s reply (first candidate) as plain text.
     """
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY environment variable is not set")
+    # Convert your message history into the SDK's Content type
+    contents: list[types.Content] = []
+    for m in messages:
+        contents.append(
+            types.Content(
+                role=m["author"],
+                parts=[types.Part.from_text(text=m["content"])]
+            )
+        )
 
-    url = "https://gemini.googleapis.com/v1/chat:generateMessage"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json"
-    }
-    body: Dict[str, Any] = {
-        "model": model,
-        "temperature": temperature,
-        "candidateCount": candidate_count,
-        "messages": messages
-    }
-
-    response = requests.post(url, json=body, headers=headers, timeout=timeout)
-    response.raise_for_status()
-    data = response.json()
-
-    candidates = data.get("candidates", [])
-    if not candidates:
-        raise RuntimeError("No reply candidates returned from Gemini API")
-
-    return candidates[0].get("content", "")
+    # Call the model, feeding in the entire conversation as "contents"
+    response = client.models.generate_content(
+        model=model,
+        contents=contents,
+        config=types.GenerateContentConfig(
+            temperature=temperature,
+            candidate_count=candidate_count
+        )
+    )
+    return response.text
