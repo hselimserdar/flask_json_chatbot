@@ -45,85 +45,92 @@ def add_message_to_session(session_id, sender, content, summary):
     conn.execute('PRAGMA foreign_keys = ON;')
     cur = conn.cursor()
     try:
-        created_at = datetime.datetime.now(datetime.timezone.utc)
+        created_at = datetime.datetime.now(datetime.timezone.utc).isoformat()
         cur.execute(
             "INSERT INTO message (session_id, sender, content, summary, created_at) "
-            "VALUES (?, ?, ?, ?, ?)",
+            "VALUES (?, ?, ?, ?, ?) RETURNING id",
             (session_id, sender, content, summary, created_at)
         )
+        row = cur.fetchone()
         conn.commit()
+        message_id = row[0] if row else None
         if debugging:
             print(
-                f"Inserted message in session_id={session_id}: "
+                f"Inserted message id={message_id} in session_id={session_id}: "
                 f"sender={sender}, content={content}, summary={summary}, at={created_at}"
             )
-        return True
+        return message_id
     except sqlite3.Error as e:
         if debugging:
             print("SQLite error in add_message_to_session:", e)
-        return False
+        return None
     finally:
         cur.close()
         conn.close()
 
+def print_sessions(username, page):
+    if page is None or page < 1:
+        page = 1
+    pagination_count = 25
+    offset = (page - 1) * pagination_count
 
-def list_session_ids_for_user(username):
     conn = sqlite3.connect('database.sqlite')
     conn.execute('PRAGMA foreign_keys = ON;')
     cur = conn.cursor()
+
     try:
         cur.execute("SELECT id FROM user WHERE username = ?", (username,))
         row = cur.fetchone()
-        if not row:
+        user_id = row[0] if row else None
+
+        if user_id is None:
+            result = {
+                "user": {"id": None, "username": username},
+                "sessions": [],
+                "page": page,
+                "per_page": pagination_count,
+                "total_sessions": 0,
+            }
             if debugging:
-                print(f"User '{username}' not found; no sessions to list.")
-            return []
-        user_id = row[0]
+                print(f"print_sessions({username}) ->", result)
+            return result
 
-        cur.execute("SELECT id FROM session WHERE user_id = ?", (user_id,))
-        rows = cur.fetchall()
-        session_ids = [r[0] for r in rows]
+        cur.execute("SELECT COUNT(*) FROM session WHERE user_id = ?", (user_id,))
+        total_sessions = cur.fetchone()[0]
 
-        if debugging:
-            print(f"Session IDs for username='{username}': {session_ids}")
-            if not session_ids:
-                print(f"No sessions found for user '{username}'")
-        return session_ids
+        cur.execute(
+            "SELECT id, title FROM session WHERE user_id = ? ORDER BY id ASC LIMIT ? OFFSET ?",
+            (user_id, pagination_count, offset),
+        )
+        session_rows = cur.fetchall()
+        sessions = []
+        for sid, title in session_rows:
+            sessions.append({"id": sid, "user_id": user_id, "title": title})
 
-    except sqlite3.Error as e:
-        if debugging:
-            print("SQLite error in list_session_ids_for_user:", e)
-        return []
-    finally:
-        cur.close()
-        conn.close()
-
-def print_sessions(username):
-    session_ids = list_session_ids_for_user(username)
-    sessions = []
-
-    conn = sqlite3.connect('database.sqlite')
-    conn.execute('PRAGMA foreign_keys = ON;')
-    cur = conn.cursor()
-    try:
-        for session_id in session_ids:
-            cur.execute("SELECT title FROM session WHERE id = ?", (session_id,))
-            row = cur.fetchone()
-            title = row[0] if row else None
-            sessions.append({"session_id": session_id, "title": title})
+        result = {
+            "meta": {"id": user_id, "username": username, "page": page, "per_page": pagination_count, "total_sessions": total_sessions},
+            "sessions": sessions,
+        }
 
         if debugging:
-            print(f"print_sessions({username}) -> {sessions}")
-        return sessions
+            print(f"print_sessions({username}) ->", result)
+        return result
 
     except sqlite3.Error as e:
         if debugging:
             print("SQLite error in print_sessions:", e)
-        return []
+        return {
+            "user": {"id": user_id if 'user_id' in locals() else None, "username": username},
+            "sessions": [],
+            "page": page,
+            "per_page": pagination_count,
+            "total_sessions": 0,
+        }
 
     finally:
         cur.close()
         conn.close()
+
 
 def is_session_owner(username, session_id):
     conn = sqlite3.connect('database.sqlite')
@@ -146,8 +153,21 @@ def is_session_owner(username, session_id):
         cur.close()
         conn.close()
 
+def get_user_id(username):
+    conn = sqlite3.connect('database.sqlite')
+    conn.execute('PRAGMA foreign_keys = ON;')
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id FROM user WHERE username = ?", (username,))
+        row = cur.fetchone()
+        return row[0] if row else None
+    finally:
+        cur.close()
+        conn.close()
+
 def chat_with_gemini(username, message, session_id=None, first_message=False):
     stateful = bool(username and session_id and is_session_owner(username, session_id))
+    user_id = get_user_id(username)
 
     if stateful:
         if first_message:
@@ -162,6 +182,7 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                 first_prompt.append({
                     "author": "system",
                     "content": "Give me the summary of this conversation so far. "
+                               "Do not skip important details while keeping it concise."
                                "I will use this as context for the next message."
                 })
                 summary = call_gemini_api(first_prompt)
@@ -172,7 +193,9 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
 
             title_prompt = [
                 {"author": "system",
-                 "content": "Give me a very short (3-5 word) title summarizing this conversation so far."},
+                 "content": "Give me a very short (3-5 word) title summarizing this conversation so far."
+                 "Just return the title without any additional text. It should be concise and descriptive."
+                 "Do not go beyond 5 words."},
                 {"author": "assistant", "content": summary}
             ]
             try:
@@ -184,16 +207,27 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
 
             generated_title = (title_candidate or "New Conversation").strip().strip('"')
 
-            add_message_to_session(session_id, "user", message, summary)
-            add_message_to_session(session_id, "bot", reply, summary)
-            update_session_title(session_id, generated_title)
-            return reply
+            user_msg_id = add_message_to_session(session_id, "user", message, summary)
+            bot_msg_id  = add_message_to_session(session_id, "bot",  reply,   summary)
 
+            update_session_title(session_id, generated_title)
+
+            return {
+                "session_id": session_id,
+                "user_id":    user_id,
+                "messages": [
+                    {"message_id": user_msg_id, "sender": "user", "content": message},
+                    {"message_id": bot_msg_id,  "sender": "bot",  "content": reply}
+                ]
+            }
+        
         else:
             prompt = [
                 {"author": "system",
                  "content": "These are the summary and title so far. Use them "
-                            "and the following message as context for the next reply."},
+                            "and the following message as context for the next reply."
+                            "Do not repeat the summary or title in your reply."
+                            "Do not say 'based on the title and summary', This will be used as context."},
                 {"author": "assistant", "content": "Title: " + get_title_for_session(session_id)},
                 {"author": "assistant", "content": "Summary: " + get_summary_for_session(session_id)},
                 {"author": "user",      "content": "Message: " + message}
@@ -212,19 +246,35 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                 if debugging:
                     print("Error while calling Gemini API:", e)
                 return None
+            
+            user_msg_id = add_message_to_session(session_id, "user", message, summary)
+            bot_msg_id  = add_message_to_session(session_id, "bot",  reply,   summary)
 
-            add_message_to_session(session_id, "user",    message, summary)
-            add_message_to_session(session_id, "bot",     reply,   summary)
-            return reply
+            return {
+                "session_id": session_id,
+                "user_id":    user_id,
+                "messages": [
+                    {"message_id": user_msg_id, "sender": "user", "content": message},
+                    {"message_id": bot_msg_id,  "sender": "bot",  "content": reply}
+                ]
+            }
 
     else:
         try:
             reply = call_gemini_api([{"author": "user", "content": message}])
-            return reply
+            return {
+                "session_id": "None",
+                "user_id":    "guest",
+                "messages": [
+                    {"message_id": "None", "sender": "user", "content": message},
+                    {"message_id": "None",  "sender": "bot",  "content": reply}
+                ]
+            }
         except Exception as e:
             if debugging:
                 print("Error while calling Gemini API:", e)
             return None
+        
         
 def get_title_for_session(session_id):
     conn = sqlite3.connect('database.sqlite')
@@ -305,39 +355,39 @@ def get_messages_for_session(session_id):
     conn.execute('PRAGMA foreign_keys = ON;')
     cur = conn.cursor()
     try:
+        cur.execute("SELECT user_id FROM session WHERE id = ?", (session_id,))
+        row = cur.fetchone()
+        user_id = row[0] if row else None
+
         cur.execute(
-            "SELECT sender, content, created_at "
+            "SELECT id, sender, content, created_at "
             "FROM message "
             "WHERE session_id = ? "
             "ORDER BY created_at",
             (session_id,)
         )
         rows = cur.fetchall()
-        messages = [
-            {
+
+        messages = []
+        for mid, sender, content, created_at in rows:
+            if isinstance(created_at, (datetime.datetime,)):
+                created_at = created_at.isoformat()
+            messages.append({
+                'id': mid,
+                'session_id': session_id,
+                'user_id': user_id,
                 'sender': sender,
                 'content': content,
                 'created_at': created_at
-            }
-            for sender, content, created_at in rows
-        ]
+            })
+
         if debugging:
             print(f"Fetched {len(messages)} messages for session_id={session_id}")
-        return messages
+        return {"data": messages}
     except sqlite3.Error as e:
         if debugging:
             print("SQLite error in get_messages_for_session:", e)
-        return []
+        return {"data": []}
     finally:
         cur.close()
         conn.close()
-
-
-def handle_message(session_id, message, reply):
-    if session_id is None:
-        session_id = "guest"
-    return {
-        " user": message,
-        "chatbot": reply,
-        "session_id": session_id
-    }

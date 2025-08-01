@@ -1,6 +1,6 @@
 # init.py
 from flask import Flask, request
-from chatbot_manage import chat_with_gemini, create_session_for_user, get_messages_for_session, handle_message, is_session_owner, print_sessions
+from chatbot_manage import chat_with_gemini, create_session_for_user, get_messages_for_session, is_session_owner, print_sessions
 from user_process import compare_passwords, get_current_user, search_for_existing_user, add_new_user
 from dotenv import load_dotenv
 import os
@@ -109,6 +109,7 @@ def register():
 @app.route('/chatbot/session', methods=['GET'])
 def session():
     user = get_current_user() or "guest"
+    page = int(request.args.get('page') or 1)
     if user == "guest":
         if debugging:
             print("Chatbot accessed by guest user, no session available")
@@ -116,12 +117,12 @@ def session():
     else:
         if debugging:
             print(f"Chatbot accessed by user {user}, returning session info")
-        printed_sessions = print_sessions(user)
+        printed_sessions = print_sessions(user, page)
         if not printed_sessions:
             if debugging:
                 print(f"No sessions found for user {user}")
             return {"message": "No active sessions found for user: " + str(user)}, 404
-        return {"sessions": printed_sessions}
+        return printed_sessions
 
 @app.route('/chatbot/message', methods=['GET'])
 def session_messages():
@@ -147,7 +148,7 @@ def session_messages():
         else:
             if debugging:
                 print(f"User {user} is authorized to access messages in session: {session_id}")
-            return {" session_id": session_id, "messages": get_messages_for_session(session_id)}
+            return get_messages_for_session(session_id)
 
 @app.route('/chatbot', methods=['POST', 'GET'])
 def chatbot():
@@ -166,7 +167,7 @@ def chatbot():
             if debugging:
                 print("Failed to get a reply from Gemini API")
             return {"message": "Failed to get a reply from the API."}, 500            
-        return handle_message(session_id, message, reply)
+        return reply
     else:
         if debugging:
             print(f"Chatbot accessed by user {user}, session_id={session_id}, message={message}")
@@ -183,7 +184,7 @@ def chatbot():
                 if debugging:
                     print("Failed to get a reply from Gemini API")
                 return {"message": "Failed to get a reply from the API."}, 500
-            return handle_message(session_id, message, reply)
+            return reply
         else:
             if debugging:
                 print(f"User {user} is trying to access session: {session_id}")
@@ -196,7 +197,7 @@ def chatbot():
                 if debugging:
                     print("Failed to get a reply from Gemini API for session:", session_id)
                 return {"message": "Failed to get a reply from the API."}, 500
-            return handle_message(session_id, message, reply)
+            return reply
 
 if __name__ == '__main__':
     app.run(debug=flaskDebugging)
