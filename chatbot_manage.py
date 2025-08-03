@@ -185,6 +185,7 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                     "content": "Give me the summary of this conversation so far. "
                                "Do not skip important details while keeping it concise."
                                "Especially technical details, if exists."
+                               "Also put the preferred language in the summary if it is mentioned in the conversation."
                                "I will use this as context for the next message."
                 })
                 summary = call_gemini_api(first_prompt)
@@ -197,7 +198,8 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                 {"author": "system",
                  "content": "Give me a very short (3-5 word) title summarizing this conversation so far."
                  "Just return the title without any additional text. It should be concise and descriptive."
-                 "Do not go beyond 5 words."},
+                 "Do not go beyond 5 words. Do not use quotes or any other punctuation. Do not use 'title' in the response."
+                 "Do not use any special characters or formatting. Just 3 to 5 plain words."},
                 {"author": "assistant", "content": "GPT Conversation Summary: " + summary}
             ]
             try:
@@ -206,8 +208,11 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                 if debugging:
                     print("Error while calling Gemini API for title:", e)
                 return None
-
-            generated_title = (title_candidate or "New Conversation").strip().strip('"')
+            if debugging:
+                print("Title candidate:", title_candidate)
+            generated_title = (title_candidate or "New Conversation").strip().strip('"').strip('*')
+            if debugging:
+                print("Generated title:", generated_title)
 
             user_msg_id = add_message_to_session(session_id, "user", message, "")
             bot_msg_id  = add_message_to_session(session_id, "bot",  reply,   summary)
@@ -217,6 +222,7 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
             return {
                 "session_id": session_id,
                 "user_id":    user_id,
+                "title": generated_title,
                 "messages": [
                     {"message_id": user_msg_id, "sender": "user", "content": message},
                     {"message_id": bot_msg_id,  "sender": "bot",  "content": reply}
@@ -224,13 +230,17 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
             }
         
         else:
+            session_title = get_title_for_session(session_id)
             prompt = [
                 {"author": "system",
                  "content": "These are the summary and title so far. Use them "
                             "and the following message as context for the next reply."
                             "Do not repeat the summary or title in your reply."
-                            "Do not say 'based on the title and summary', This will be used as context."},
-                {"author": "assistant", "content": "Title: " + get_title_for_session(session_id)},
+                            "Do not say 'based on the title and summary' and/or refer to the summary."
+                            "Do not say given the context or anything similar. Unless the user asks for it, do not repeat the summary or title."
+                            "Answer in the language of the user's preference, if it is mentioned."
+                            "This will be used as context for the next message as follow-up."},
+                {"author": "assistant", "content": "Title: " + session_title},
                 {"author": "assistant", "content": "Summary so far: " + get_summary_for_session(session_id)},
                 {"author": "user",      "content": "Prompt: " + message}
             ]
@@ -244,6 +254,7 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                                "It includes old summary, title, your last reply, and the new user message."
                                "Do not skip important details while keeping it concise."
                                "Especially technical details, if exists."
+                               "Also put the preferred language in the summary if it is mentioned in the conversation."
                                "I will use this as context for the next message."
                 })
                 summary = call_gemini_api(prompt)
@@ -251,19 +262,41 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                 if debugging:
                     print("Error while calling Gemini API:", e)
                 return None
-            
-            user_msg_id = add_message_to_session(session_id, "user", message, summary)
+
+            if session_title == "New Conversation":
+                title_prompt = [
+                    {"author": "system",
+                    "content": "Give me a very short (3-5 word) title summarizing this conversation so far."
+                    "Just return the title without any additional text. It should be concise and descriptive."
+                    "Do not go beyond 5 words. Do not use quotes or any other punctuation. Do not use 'title' in the response."
+                    "Do not use any special characters or formatting. Just 3 to 5 plain words."},
+                    {"author": "assistant", "content": "GPT Conversation Summary: " + summary}
+                ]
+                try:
+                    title_candidate = call_gemini_api(title_prompt)
+                except Exception as e:
+                    if debugging:
+                        print("Error while calling Gemini API for title:", e)
+                    return None
+                if debugging:
+                    print("Title candidate:", title_candidate)
+                session_title = (title_candidate or "New Conversation").strip().strip('"').strip('*')
+                if debugging:
+                    print("Generated title:", session_title)
+                update_session_title(session_id, session_title)
+
+            user_msg_id = add_message_to_session(session_id, "user", message, "")
             bot_msg_id  = add_message_to_session(session_id, "bot",  reply,   summary)
 
             return {
                 "session_id": session_id,
                 "user_id":    user_id,
+                "title":     session_title,
                 "messages": [
                     {"message_id": user_msg_id, "sender": "user", "content": message},
                     {"message_id": bot_msg_id,  "sender": "bot",  "content": reply}
                 ]
             }
-
     else:
         try:
             reply = call_gemini_api([{"author": "user", "content": message}])
