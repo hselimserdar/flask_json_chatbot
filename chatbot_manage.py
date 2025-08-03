@@ -183,6 +183,7 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                     "author": "system",
                     "content": "Give me the summary of this conversation so far. "
                                "Do not skip important details while keeping it concise."
+                               "Especially technical details, if exists."
                                "I will use this as context for the next message."
                 })
                 summary = call_gemini_api(first_prompt)
@@ -240,6 +241,9 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                     "author": "system",
                     "content": "Give me the summary of this conversation so far. "
                                "It includes old summary, title, your last reply, and the new user message."
+                               "Do not skip important details while keeping it concise."
+                               "Especially technical details, if exists."
+                               "I will use this as context for the next message."
                 })
                 summary = call_gemini_api(prompt)
             except Exception as e:
