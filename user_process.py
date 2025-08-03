@@ -29,7 +29,12 @@ def get_current_user():
             )
             if debugging:
                 print("Token payload:", payload)
-            return payload.get('sub')
+            if search_for_existing_user(payload.get('sub')) is not None:
+                return payload.get('sub')
+            else:
+                if debugging:
+                    print("Token is valid but user is deleted or does not exist")
+                return None
         except jwt.ExpiredSignatureError:
             if debugging:
                 print("Token has expired")
@@ -37,21 +42,6 @@ def get_current_user():
             if debugging:
                 print("Invalid token")
     return None
-
-
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        user = get_current_user()
-        if not user:
-            if debugging:
-                print("token_required: no valid user, returning 401")
-            return {"message": "Token is missing or invalid!"}, 401
-        if debugging:
-            print("token_required: authenticated user =", user)
-        return f(user, *args, **kwargs)
-    return decorated
-
 
 def encrypt_password(user_key, input_password):
     key_bytes = base64.urlsafe_b64decode(user_key.encode('ascii'))
