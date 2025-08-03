@@ -209,7 +209,7 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
 
             generated_title = (title_candidate or "New Conversation").strip().strip('"')
 
-            user_msg_id = add_message_to_session(session_id, "user", message, summary)
+            user_msg_id = add_message_to_session(session_id, "user", message, "")
             bot_msg_id  = add_message_to_session(session_id, "bot",  reply,   summary)
 
             update_session_title(session_id, generated_title)
