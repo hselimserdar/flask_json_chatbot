@@ -173,12 +173,12 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
         if first_message:
             first_prompt = [
                 {"author": "system",    "content": "You are a helpful assistant."},
-                {"author": "user",      "content": message}
+                {"author": "user",      "content": "Prompt: " + message}
             ]
             try:
                 reply = call_gemini_api(first_prompt)
 
-                first_prompt.append({"author": "assistant", "content": reply})
+                first_prompt.append({"author": "assistant", "content": "GPT Answer: " + reply})
                 first_prompt.append({
                     "author": "system",
                     "content": "Give me the summary of this conversation so far. "
@@ -197,7 +197,7 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                  "content": "Give me a very short (3-5 word) title summarizing this conversation so far."
                  "Just return the title without any additional text. It should be concise and descriptive."
                  "Do not go beyond 5 words."},
-                {"author": "assistant", "content": summary}
+                {"author": "assistant", "content": "GPT Conversation Summary: " + summary}
             ]
             try:
                 title_candidate = call_gemini_api(title_prompt)
@@ -230,13 +230,13 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                             "Do not repeat the summary or title in your reply."
                             "Do not say 'based on the title and summary', This will be used as context."},
                 {"author": "assistant", "content": "Title: " + get_title_for_session(session_id)},
-                {"author": "assistant", "content": "Summary: " + get_summary_for_session(session_id)},
-                {"author": "user",      "content": "Message: " + message}
+                {"author": "assistant", "content": "Summary so far: " + get_summary_for_session(session_id)},
+                {"author": "user",      "content": "Prompt: " + message}
             ]
 
             try:
                 reply = call_gemini_api(prompt)
-                prompt.append({"author": "assistant", "content": reply})
+                prompt.append({"author": "assistant", "content": "GPT Answer: " + reply})
                 prompt.append({
                     "author": "system",
                     "content": "Give me the summary of this conversation so far. "
@@ -373,11 +373,11 @@ def get_messages_for_session(session_id):
         rows = cur.fetchall()
 
         messages = []
-        for mid, sender, content, created_at in rows:
+        for id, sender, content, created_at in rows:
             if isinstance(created_at, (datetime.datetime,)):
                 created_at = created_at.isoformat()
             messages.append({
-                'id': mid,
+                'id': id,
                 'session_id': session_id,
                 'user_id': user_id,
                 'sender': sender,
