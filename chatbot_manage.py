@@ -1,3 +1,4 @@
+#chatbot_manage.py
 import datetime
 import sqlite3
 import os
@@ -166,7 +167,7 @@ def get_user_id(username):
         conn.close()
 
 def chat_with_gemini(username, message, session_id=None, first_message=False):
-    stateful = bool(username and session_id and is_session_owner(username, session_id))
+    stateful = bool(username and session_id)
     user_id = get_user_id(username)
 
     if stateful:
@@ -278,7 +279,6 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
             if debugging:
                 print("Error while calling Gemini API:", e)
             return None
-        
         
 def get_title_for_session(session_id):
     conn = sqlite3.connect('database.sqlite')
