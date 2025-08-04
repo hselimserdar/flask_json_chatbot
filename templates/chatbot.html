@@ -10,6 +10,7 @@
     <div class="chat-container">
         <header class="chat-header">
             <div class="header-left">
+                <button id="mobileMenuBtn" class="mobile-menu-btn">☰</button>
                 <h1>🤖 AI Chatbot</h1>
                 <span id="userInfo" class="user-info"></span>
             </div>
@@ -73,9 +74,10 @@
                     currentSessionId = 'guest';
                     document.getElementById('userInfo').textContent = 'Guest User';
                     document.getElementById('newSessionBtn').style.display = 'none';
+                    document.getElementById('mobileMenuBtn').style.display = 'none';
                     // Hide sessions sidebar for guest users
                     document.getElementById('sessionsSidebar').style.display = 'none';
-                    document.querySelector('.chat-main').style.marginLeft = '0';
+                    document.querySelector('.chat-main').classList.remove('with-sidebar');
                 } else {
                     window.location.href = '/login';
                     return;
@@ -85,6 +87,8 @@
                 verifyToken();
                 // Load sessions immediately for authenticated users
                 loadSessions(currentPage);
+                // Mark chat main as having sidebar
+                document.querySelector('.chat-main').classList.add('with-sidebar');
             }
 
             setupEventListeners();
@@ -126,6 +130,20 @@
             if (!isGuest) {
                 document.getElementById('prevPage').addEventListener('click', () => changePage(currentPage - 1));
                 document.getElementById('nextPage').addEventListener('click', () => changePage(currentPage + 1));
+                
+                // Mobile menu toggle
+                document.getElementById('mobileMenuBtn').addEventListener('click', toggleMobileSidebar);
+                
+                // Close mobile sidebar when clicking outside
+                document.addEventListener('click', function(e) {
+                    if (window.innerWidth <= 768) {
+                        const sidebar = document.getElementById('sessionsSidebar');
+                        const menuBtn = document.getElementById('mobileMenuBtn');
+                        if (!sidebar.contains(e.target) && !menuBtn.contains(e.target)) {
+                            sidebar.classList.remove('mobile-open');
+                        }
+                    }
+                });
             }
         }
 
@@ -190,7 +208,7 @@
             }
         }
 
-        function addMessageToChat(sender, message) {
+        function addMessageToChat(sender, message, timestamp = null) {
             const chatMessages = document.getElementById('chatMessages');
             
             // Remove welcome message if it exists
@@ -204,14 +222,24 @@
             
             const messageContent = document.createElement('div');
             messageContent.className = 'message-content';
-            messageContent.textContent = message;
             
-            const timestamp = document.createElement('div');
-            timestamp.className = 'message-timestamp';
-            timestamp.textContent = new Date().toLocaleTimeString();
+            // Process message for code blocks
+            const processedMessage = processCodeBlocks(message);
+            messageContent.innerHTML = processedMessage;
+            
+            const timestampDiv = document.createElement('div');
+            timestampDiv.className = 'message-timestamp';
+            
+            // Use provided timestamp or current time for new messages
+            if (timestamp) {
+                const messageTime = new Date(timestamp);
+                timestampDiv.textContent = messageTime.toLocaleString();
+            } else {
+                timestampDiv.textContent = new Date().toLocaleTimeString();
+            }
             
             messageDiv.appendChild(messageContent);
-            messageDiv.appendChild(timestamp);
+            messageDiv.appendChild(timestampDiv);
             
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
@@ -270,20 +298,6 @@
             textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
         }
 
-        async function toggleSessionsSidebar() {
-            const sidebar = document.getElementById('sessionsSidebar');
-            if (sidebar.classList.contains('open')) {
-                closeSessionsSidebar();
-            } else {
-                await loadSessions();
-                sidebar.classList.add('open');
-            }
-        }
-
-        function closeSessionsSidebar() {
-            document.getElementById('sessionsSidebar').classList.remove('open');
-        }
-
         async function loadSessions(page = 1) {
             if (isGuest) return;
 
@@ -316,9 +330,17 @@
             const sessionsList = document.getElementById('sessionsList');
             sessionsList.innerHTML = '';
 
-            sessions.forEach(session => {
+            // Sort sessions by created_at in descending order (newest first)
+            const sortedSessions = sessions.sort((a, b) => {
+                const dateA = new Date(a.created_at || 0);
+                const dateB = new Date(b.created_at || 0);
+                return dateB - dateA; // Newest first
+            });
+
+            sortedSessions.forEach(session => {
                 const sessionDiv = document.createElement('div');
                 sessionDiv.className = 'session-item';
+                sessionDiv.setAttribute('data-session-id', session.id);
                 if (session.id === currentSessionId) {
                     sessionDiv.classList.add('active');
                 }
@@ -350,7 +372,8 @@
                     currentSessionId = sessionId;
                     updateURL();
                     displayMessages(data.data || []); // Fix: use data.data instead of data.messages
-                    closeSessionsSidebar();
+                    // Update active session in sidebar
+                    updateActiveSession(sessionId);
                 } else {
                     showErrorMessage(data.message || 'Failed to load session');
                 }
@@ -375,7 +398,7 @@
             }
 
             messages.forEach(msg => {
-                addMessageToChat(msg.sender, msg.content);
+                addMessageToChat(msg.sender, msg.content, msg.created_at);
             });
         }
 
@@ -388,7 +411,23 @@
                 </div>
             `;
             updateURL();
-            // Don't close sidebar when starting new session
+            // Clear active session highlighting
+            updateActiveSession(null);
+        }
+
+        function updateActiveSession(sessionId) {
+            // Remove active class from all sessions
+            document.querySelectorAll('.session-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            
+            // Add active class to current session
+            if (sessionId) {
+                const activeSession = document.querySelector(`[data-session-id="${sessionId}"]`);
+                if (activeSession) {
+                    activeSession.classList.add('active');
+                }
+            }
         }
 
         function updateURL() {
@@ -412,9 +451,112 @@
             loadSessions(page);
         }
 
+        function toggleMobileSidebar() {
+            const sidebar = document.getElementById('sessionsSidebar');
+            sidebar.classList.toggle('mobile-open');
+        }
+
         function logout() {
             localStorage.removeItem('token');
             window.location.href = '/';
+        }
+
+        function processCodeBlocks(text) {
+            // First, extract and temporarily replace code blocks to protect them
+            const codeBlocks = [];
+            let codeBlockIndex = 0;
+            
+            // Extract code blocks with language specification
+            text = text.replace(/```(\w+)?\n?([\s\S]*?)```/g, (match, language, code) => {
+                const lang = language || 'text';
+                const placeholder = `__CODE_BLOCK_${codeBlockIndex}__`;
+                codeBlocks[codeBlockIndex] = {
+                    type: 'block',
+                    language: lang,
+                    code: code.trim()
+                };
+                codeBlockIndex++;
+                return placeholder;
+            });
+
+            // Extract inline code
+            text = text.replace(/`([^`\n]+)`/g, (match, code) => {
+                const placeholder = `__CODE_BLOCK_${codeBlockIndex}__`;
+                codeBlocks[codeBlockIndex] = {
+                    type: 'inline',
+                    code: code
+                };
+                codeBlockIndex++;
+                return placeholder;
+            });
+
+            // Escape HTML in the remaining text
+            text = text
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+
+            // Process markdown formatting
+            // Bold text: **text** or __text__
+            text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            text = text.replace(/__(.*?)__/g, '<strong>$1</strong>');
+            
+            // Italic text: *text* or _text_ (using a different approach for better compatibility)
+            // First handle cases where * is not part of **
+            text = text.replace(/\*([^*\n]+?)\*/g, function(match, content, offset, string) {
+                // Check if this * is part of **
+                if (offset > 0 && string[offset - 1] === '*') return match;
+                if (offset + match.length < string.length && string[offset + match.length] === '*') return match;
+                return '<em>' + content + '</em>';
+            });
+            
+            // Handle underscore italics (not part of __)
+            text = text.replace(/_([^_\n]+?)_/g, function(match, content, offset, string) {
+                // Check if this _ is part of __
+                if (offset > 0 && string[offset - 1] === '_') return match;
+                if (offset + match.length < string.length && string[offset + match.length] === '_') return match;
+                return '<em>' + content + '</em>';
+            });
+
+            // Process bullet points
+            text = text.replace(/^\*\s+(.+)$/gm, '<li>$1</li>');
+            text = text.replace(/^-\s+(.+)$/gm, '<li>$1</li>');
+            
+            // Wrap consecutive list items in <ul> tags
+            text = text.replace(/(<li>.*<\/li>\s*)+/gs, (match) => {
+                return '<ul>' + match + '</ul>';
+            });
+
+            // Convert line breaks to <br> tags
+            text = text.replace(/\n/g, '<br>');
+
+            // Restore code blocks with proper formatting
+            codeBlocks.forEach((block, index) => {
+                const placeholder = `__CODE_BLOCK_${index}__`;
+                if (block.type === 'block') {
+                    const escapedCode = block.code
+                        .replace(/&/g, "&amp;")
+                        .replace(/</g, "&lt;")
+                        .replace(/>/g, "&gt;")
+                        .replace(/"/g, "&quot;")
+                        .replace(/'/g, "&#039;");
+                    const replacement = `<div class="code-block"><div class="code-header">${block.language}</div><pre><code class="language-${block.language}">${escapedCode}</code></pre></div>`;
+                    text = text.replace(placeholder, replacement);
+                } else if (block.type === 'inline') {
+                    const escapedCode = block.code
+                        .replace(/&/g, "&amp;")
+                        .replace(/</g, "&lt;")
+                        .replace(/>/g, "&gt;")
+                        .replace(/"/g, "&quot;")
+                        .replace(/'/g, "&#039;");
+                    const replacement = `<code class="inline-code">${escapedCode}</code>`;
+                    text = text.replace(placeholder, replacement);
+                }
+            });
+
+            return text;
         }
     </script>
 </body>

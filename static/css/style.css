@@ -341,6 +341,108 @@ header h1 {
     font-style: italic;
 }
 
+/* Code block styles */
+.code-block {
+    margin: 0.75rem 0;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    background-color: #1e1e1e;
+    border: 1px solid #3e3e3e;
+}
+
+.code-header {
+    background-color: #2d2d30;
+    color: #cccccc;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    border-bottom: 1px solid #3e3e3e;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.code-block pre {
+    margin: 0;
+    padding: 1rem;
+    background-color: #1e1e1e;
+    overflow-x: auto;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.875rem;
+    line-height: 1.4;
+}
+
+.code-block code {
+    color: #d4d4d4;
+    background: none;
+    padding: 0;
+    border-radius: 0;
+    font-family: inherit;
+}
+
+.inline-code {
+    background-color: var(--bg-accent);
+    color: var(--primary-color);
+    padding: 0.125rem 0.375rem;
+    border-radius: var(--radius-sm);
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.875em;
+    border: 1px solid var(--border-color);
+}
+
+/* Syntax highlighting colors */
+.language-python .keyword { color: #569cd6; }
+.language-python .string { color: #ce9178; }
+.language-python .comment { color: #6a9955; }
+.language-python .function { color: #dcdcaa; }
+
+.language-javascript .keyword { color: #569cd6; }
+.language-javascript .string { color: #ce9178; }
+.language-javascript .comment { color: #6a9955; }
+.language-javascript .function { color: #dcdcaa; }
+
+.language-arduino .keyword { color: #569cd6; }
+.language-arduino .string { color: #ce9178; }
+.language-arduino .comment { color: #6a9955; }
+.language-arduino .function { color: #dcdcaa; }
+
+.language-html .tag { color: #569cd6; }
+.language-html .attribute { color: #92c5f7; }
+.language-html .string { color: #ce9178; }
+
+.language-css .property { color: #92c5f7; }
+.language-css .value { color: #ce9178; }
+.language-css .selector { color: #d7ba7d; }
+
+/* Markdown formatting styles */
+.message-content strong {
+    font-weight: 600;
+    color: inherit;
+}
+
+.message-content em {
+    font-style: italic;
+    color: inherit;
+}
+
+.message-content ul {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+    list-style-type: disc;
+}
+
+.message-content li {
+    margin-bottom: 0.25rem;
+    line-height: 1.5;
+}
+
+.bot-message .message-content ul {
+    color: var(--text-primary);
+}
+
+.user-message .message-content ul {
+    color: white;
+}
+
 /* Chat container styles */
 .chat-container {
     display: flex;
@@ -359,11 +461,32 @@ header h1 {
     box-shadow: var(--shadow-sm);
 }
 
+.header-left {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
 .header-left h1 {
     font-size: 1.5rem;
     font-weight: 600;
     color: var(--primary-color);
     margin-bottom: 0.25rem;
+}
+
+.mobile-menu-btn {
+    display: none;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    color: var(--primary-color);
+    cursor: pointer;
+    padding: 0.5rem;
+    border-radius: var(--radius-sm);
+}
+
+.mobile-menu-btn:hover {
+    background-color: var(--bg-accent);
 }
 
 .user-info {
@@ -390,14 +513,9 @@ header h1 {
     border-right: 1px solid var(--border-color);
     display: flex;
     flex-direction: column;
-    transform: translateX(-100%);
-    transition: transform 0.3s ease;
     position: relative;
     z-index: 10;
-}
-
-.sessions-sidebar.open {
-    transform: translateX(0);
+    flex-shrink: 0;
 }
 
 .sidebar-header {
@@ -530,6 +648,8 @@ header h1 {
     border-radius: var(--radius-lg);
     word-wrap: break-word;
     white-space: pre-wrap;
+    font-size: 1rem;
+    line-height: 1.5;
 }
 
 .user-message .message-content {
@@ -702,6 +822,10 @@ footer {
 }
 
 @media (max-width: 480px) {
+    .mobile-menu-btn {
+        display: block;
+    }
+
     .header-left h1 {
         font-size: 1.25rem;
     }
@@ -718,10 +842,19 @@ footer {
     .sessions-sidebar {
         width: 100%;
         position: fixed;
-        left: 0;
+        left: -100%;
         top: 0;
         height: 100vh;
         z-index: 1000;
+        transition: left 0.3s ease;
+    }
+
+    .sessions-sidebar.mobile-open {
+        left: 0;
+    }
+
+    .chat-main.with-sidebar {
+        margin-left: 0;
     }
 
     .chat-messages {
