@@ -7,7 +7,7 @@
     <title>HSS GPT</title>
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/50px-logo.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <!-- pick a style you like; here’s GitHub-Dark -->
+    <!-- pick a style you like; here's GitHub-Dark -->
     <link rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" />
     <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
@@ -107,6 +107,7 @@
 
             setupEventListeners();
             adjustTextareaHeight();
+            checkIfWaitingForResponse();
         });
 
         async function verifyToken() {
@@ -167,10 +168,18 @@
 
             if (!message) return;
 
+            // Check if we're already waiting for a response
+            if (isWaitingForResponse()) {
+                return;
+            }
+
             // Add user message to chat
             addMessageToChat('user', message);
             messageInput.value = '';
             adjustTextareaHeight();
+
+            // Block input while waiting for response
+            setWaitingForResponse(true);
 
             // Show typing indicator
             showTypingIndicator();
@@ -196,6 +205,12 @@
                         // Reload sessions to show the new session
                         loadSessions(currentPage);
                     }
+                    
+                    // Check if session title has changed and update sidebar
+                    if (data.title && currentSessionId && data.session_id === currentSessionId) {
+                        updateSessionTitleInSidebar(currentSessionId, data.title);
+                    }
+                    
                     // Fix: check if data has the expected structure
                     let botMessage = '';
                     if (data.messages && data.messages.length > 1) {
@@ -213,12 +228,24 @@
                         showErrorMessage('Received empty response from the chatbot. Please try again.');
                     }
                 } else {
+                    // Check for authentication/authorization errors (403/404)
+                    if (response.status === 403 || response.status === 404) {
+                        const errorMessage = data.message || 'Access denied';
+                        if (shouldRedirectToLogin(errorMessage)) {
+                            localStorage.removeItem('token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                    }
                     showErrorMessage(data.message || 'An error occurred');
                 }
             } catch (error) {
                 hideTypingIndicator();
                 showErrorMessage('Failed to send message. Please try again.');
                 console.error('Send message error:', error);
+            } finally {
+                // Unblock input after response (success or error)
+                setWaitingForResponse(false);
             }
         }
 
@@ -263,6 +290,20 @@
         }
 
         function showErrorMessage(message) {
+            // Check if this is an authentication/authorization error that should redirect to login
+            if (shouldRedirectToLogin(message)) {
+                localStorage.removeItem('token'); // Clear any invalid token
+                window.location.href = '/login';
+                return;
+            }
+
+            // Check if this is an API failure that should refresh the page
+            if (shouldRefreshPage(message)) {
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000); // Give user 2 seconds to see the error message
+            }
+
             // Remove any existing error messages
             const existingError = document.querySelector('.error-notification');
             if (existingError) {
@@ -284,12 +325,35 @@
             const chatContainer = document.querySelector('.chat-container');
             chatContainer.insertBefore(errorDiv, chatContainer.firstChild);
 
-            // Auto-hide after 5 seconds
-            setTimeout(() => {
-                if (errorDiv.parentNode) {
-                    errorDiv.remove();
-                }
-            }, 5000);
+            // Auto-hide after 5 seconds (unless page is refreshing)
+            if (!shouldRefreshPage(message)) {
+                setTimeout(() => {
+                    if (errorDiv.parentNode) {
+                        errorDiv.remove();
+                    }
+                }, 5000);
+            }
+        }
+
+        function shouldRedirectToLogin(message) {
+            // List of error messages that indicate authentication/authorization issues
+            const authErrorMessages = [
+                "Forbidden: Guest users cannot access session messages.",
+                "Forbidden: You do not have access to this session.",
+                "Guest users cannot create or access sessions.",
+                "No active session available for guest users."
+            ];
+            
+            return authErrorMessages.some(authMsg => message.includes(authMsg));
+        }
+
+        function shouldRefreshPage(message) {
+            // List of error messages that indicate API failures requiring page refresh
+            const apiFailureMessages = [
+                "Failed to get a reply from the API."
+            ];
+            
+            return apiFailureMessages.some(apiMsg => message.includes(apiMsg));
         }
 
         function showTypingIndicator() {
@@ -336,6 +400,15 @@
                     console.log(`Updated currentPage to: ${currentPage}, has_next: ${data.has_next}, has_previous: ${data.has_previous}`);
                     updatePagination(data.has_next, data.has_previous);
                 } else {
+                    // Check for authentication/authorization errors
+                    if (response.status === 403 || response.status === 404) {
+                        const errorMessage = data.message || 'Access denied';
+                        if (shouldRedirectToLogin(errorMessage)) {
+                            localStorage.removeItem('token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                    }
                     document.getElementById('sessionsList').innerHTML =
                         '<div class="no-sessions">No sessions found</div>';
                 }
@@ -370,13 +443,109 @@
                 const createdAt = session.created_at ? new Date(session.created_at).toLocaleDateString() : 'Unknown date';
 
                 sessionDiv.innerHTML = `
-                    <div class="session-title">${session.title || 'Session ' + session.id}</div>
-                    <div class="session-date">${createdAt}</div>
+                    <div class="session-content">
+                        <div class="session-title">${session.title || 'Session ' + session.id}</div>
+                        <div class="session-date">${createdAt}</div>
+                    </div>
+                    <button class="session-delete-btn" title="Delete session" onclick="deleteSession(event, '${session.id}')">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="3,6 5,6 21,6"></polyline>
+                            <path d="m19,6v14a2,2 0 0,1-2,2H7a2,2 0 0,1-2-2V6m3,0V4a2,2 0 0,1,2-2h4a2,2 0 0,1,2,2v2"></path>
+                            <line x1="10" y1="11" x2="10" y2="17"></line>
+                            <line x1="14" y1="11" x2="14" y2="17"></line>
+                        </svg>
+                    </button>
                 `;
 
-                sessionDiv.addEventListener('click', () => loadSession(session.id));
+                sessionDiv.addEventListener('click', (e) => {
+                    // Don't load session if delete button was clicked
+                    if (!e.target.closest('.session-delete-btn')) {
+                        loadSession(session.id);
+                    }
+                });
                 sessionsList.appendChild(sessionDiv);
             });
+        }
+
+        function updateSessionTitleInSidebar(sessionId, newTitle) {
+            // Find the session div with the matching data-session-id attribute
+            const sessionDiv = document.querySelector(`[data-session-id="${sessionId}"]`);
+            if (sessionDiv) {
+                // Update the session title in the sidebar
+                const titleElement = sessionDiv.querySelector('.session-title');
+                if (titleElement) {
+                    titleElement.textContent = newTitle || `Session ${sessionId}`;
+                }
+            }
+        }
+
+        async function deleteSession(event, sessionId) {
+            event.stopPropagation(); // Prevent triggering the session click event
+            
+            // Show confirmation dialog
+            if (!confirm('Are you sure you want to delete this session? This action cannot be undone.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/chatbot/delete?session=${sessionId}`, {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    // Show success message
+                    showSuccessMessage(data.message || 'Session deleted successfully');
+                    
+                    // If this was the current session, clear the chat and redirect to new session
+                    if (currentSessionId === sessionId) {
+                        currentSessionId = null;
+                        updateURL();
+                        // Clear chat messages
+                        const chatMessages = document.getElementById('chatMessages');
+                        chatMessages.innerHTML = `
+                            <div class="welcome-message">
+                                <h3>Welcome to HSS GPT! 👋</h3>
+                                <p>How can I help you today?</p>
+                            </div>
+                        `;
+                    }
+                    
+                    // Reload sessions to update the sidebar
+                    loadSessions(currentPage);
+                } else {
+                    // Handle specific error cases
+                    if (response.status === 403) {
+                        showErrorMessage('You do not have permission to delete this session.');
+                    } else if (response.status === 404) {
+                        showErrorMessage('Session not found.');
+                    } else {
+                        showErrorMessage(data.message || 'Failed to delete session. Please try again.');
+                    }
+                }
+            } catch (error) {
+                console.error('Delete session error:', error);
+                showErrorMessage('Failed to delete session. Please check your connection and try again.');
+            }
+        }
+
+        function showSuccessMessage(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            if (errorDiv) {
+                errorDiv.textContent = message;
+                errorDiv.style.backgroundColor = '#22c55e';
+                errorDiv.style.borderColor = '#16a34a';
+                errorDiv.style.color = 'white';
+                errorDiv.style.display = 'block';
+                
+                setTimeout(() => {
+                    errorDiv.style.display = 'none';
+                }, 3000);
+            }
         }
 
         async function loadSession(sessionId) {
@@ -395,7 +564,18 @@
                     displayMessages(data.data || []); // Fix: use data.data instead of data.messages
                     // Update active session in sidebar
                     updateActiveSession(sessionId);
+                    // Check if we should block input after loading messages
+                    checkIfWaitingForResponse();
                 } else {
+                    // Check for authentication/authorization errors
+                    if (response.status === 403 || response.status === 404) {
+                        const errorMessage = data.message || 'Access denied';
+                        if (shouldRedirectToLogin(errorMessage)) {
+                            localStorage.removeItem('token');
+                            window.location.href = '/login';
+                            return;
+                        }
+                    }
                     showErrorMessage(data.message || 'Failed to load session');
                 }
             } catch (error) {
@@ -561,6 +741,42 @@
             });
 
             return text;
+        }
+
+        // Input blocking functionality
+        function isWaitingForResponse() {
+            const chatMessages = document.getElementById('chatMessages');
+            const messages = chatMessages.querySelectorAll('.message:not(.typing-indicator)');
+            
+            if (messages.length === 0) return false;
+            
+            const lastMessage = messages[messages.length - 1];
+            return lastMessage.classList.contains('user-message');
+        }
+
+        function setWaitingForResponse(waiting) {
+            const messageInput = document.getElementById('messageInput');
+            const sendBtn = document.getElementById('sendBtn');
+            
+            if (waiting) {
+                messageInput.disabled = true;
+                messageInput.placeholder = "Waiting for response...";
+                sendBtn.disabled = true;
+                sendBtn.style.opacity = '0.5';
+                sendBtn.style.cursor = 'not-allowed';
+            } else {
+                messageInput.disabled = false;
+                messageInput.placeholder = "Type your message here...";
+                sendBtn.disabled = false;
+                sendBtn.style.opacity = '1';
+                sendBtn.style.cursor = 'pointer';
+            }
+        }
+
+        function checkIfWaitingForResponse() {
+            if (isWaitingForResponse()) {
+                setWaitingForResponse(true);
+            }
         }
     </script>
 </body>

@@ -47,6 +47,27 @@
     </div>
 
     <script>
+        // Check if user is already authenticated on page load
+        window.addEventListener('load', function() {
+            const token = localStorage.getItem('token');
+            if (token && isTokenValid(token)) {
+                // User is already authenticated, redirect to chatbot
+                window.location.href = '/chatbot.html';
+                return;
+            }
+        });
+
+        function isTokenValid(token) {
+            try {
+                // Decode JWT token to check expiration
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const currentTime = Math.floor(Date.now() / 1000);
+                return payload.exp > currentTime;
+            } catch (error) {
+                return false;
+            }
+        }
+
         document.getElementById('registerForm').addEventListener('submit', async function(e) {
             e.preventDefault();
             

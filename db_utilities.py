@@ -216,3 +216,40 @@ def get_messages_for_session(session_id):
     finally:
         cur.close()
         conn.close()
+
+def delete_session_for_user(username, session_id):
+    conn = sqlite3.connect('database.sqlite')
+    conn.execute('PRAGMA foreign_keys = ON;')
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id FROM user WHERE username = ?", (username,))
+        row = cur.fetchone()
+        if not row:
+            if debugging:
+                print(f"delete_session_for_user: user '{username}' not found")
+            return False
+        user_id = row[0]
+
+        cur.execute(
+            "DELETE FROM session WHERE id = ? AND user_id = ?",
+            (session_id, user_id)
+        )
+        conn.commit()
+
+        if cur.rowcount != 1:
+            if debugging:
+                print(f"delete_session_for_user: no session deleted (session_id={session_id}, user_id={user_id})")
+            return False
+
+        if debugging:
+            print(f"delete_session_for_user: deleted session_id={session_id} for user_id={user_id}")
+        return True
+
+    except sqlite3.Error as e:
+        if debugging:
+            print("SQLite error in delete_session_for_user:", e)
+        return False
+
+    finally:
+        cur.close()
+        conn.close()

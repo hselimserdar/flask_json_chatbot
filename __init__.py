@@ -1,8 +1,8 @@
 #init.py
-from flask import Flask, request, render_template
+from flask import Flask, request, render_template, redirect
 from chatbot_manage import chat_with_gemini, create_session_for_user, is_session_owner
 from user_process import compare_passwords, get_current_user, search_for_existing_user, add_new_user
-from db_utilities import print_sessions, get_messages_for_session
+from db_utilities import delete_session_for_user, print_sessions, get_messages_for_session
 from dotenv import load_dotenv
 import os
 import jwt
@@ -124,6 +124,39 @@ def session():
                 print(f"No sessions found for user {user}")
             return {"message": "No active sessions found for user: " + str(user)}, 404
         return printed_sessions
+    
+@app.route('/chatbot/delete', methods=['GET'])
+def delete_session():
+    user = get_current_user() or "guest"
+    session_id = request.args.get('session')
+
+    if debugging:
+        print(f"delete_session called by user={user}, session_id={session_id}")
+
+    if not session_id:
+        if debugging:
+            print("No session ID provided")
+        return {"message": "Session ID is required."}, 400
+
+    if user == "guest":
+        if debugging:
+            print("Guest user attempted to delete a session")
+        return {"message": "Forbidden: Guests cannot delete sessions."}, 403
+
+    if not is_session_owner(user, session_id):
+        if debugging:
+            print(f"User {user} is not owner of session {session_id}")
+        return {"message": "Forbidden: You do not have access to delete this session."}, 403
+
+    success = delete_session_for_user(user, session_id)
+    if success:
+        if debugging:
+            print(f"Session {session_id} deleted for user {user}")
+        return {"message": f"Session {session_id} deleted successfully."}
+    else:
+        if debugging:
+            print(f"Failed to delete session {session_id} for user {user}")
+        return {"message": "Internal error: could not delete session."}, 500
 
 @app.route('/chatbot/message', methods=['GET'])
 def session_messages():
@@ -184,6 +217,7 @@ def chatbot():
             if not reply:
                 if debugging:
                     print("Failed to get a reply from Gemini API")
+                delete_session_for_user(user, session_id)
                 return {"message": "Failed to get a reply from the API."}, 500
             return reply
         else:
@@ -202,19 +236,37 @@ def chatbot():
 
 @app.route('/login')
 def login_page():
+    # Check if user is already authenticated
+    user = get_current_user()
+    if user:
+        if debugging:
+            print(f"Authenticated user {user} trying to access login page, redirecting to main chatbot")
+        return redirect('/chatbot.html')
     return render_template('login.html')
 
 @app.route('/register')
 def register_page():
+    # Check if user is already authenticated
+    user = get_current_user()
+    if user:
+        if debugging:
+            print(f"Authenticated user {user} trying to access register page, redirecting to main chatbot")
+        return redirect('/chatbot.html')
     return render_template('register.html')
+
+@app.route('/guest-chat')
+def guest_chat_page():
+    # Check if user is already authenticated
+    user = get_current_user()
+    if user:
+        if debugging:
+            print(f"Authenticated user {user} trying to access guest chat, redirecting to main chatbot")
+        return redirect('/chatbot.html')
+    return render_template('guest-chat.html')
 
 @app.route('/chatbot.html')
 def chatbot_page():
     return render_template('chatbot.html')
-
-@app.route('/guest-chat')
-def guest_chat_page():
-    return render_template('guest-chat.html')
 
 if __name__ == '__main__':
     app.run(debug=flaskDebugging)

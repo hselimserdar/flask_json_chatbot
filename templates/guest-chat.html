@@ -60,10 +60,38 @@
     </div>
 
     <script>
+        // Check if user is already authenticated on page load
+        function checkAuthentication() {
+            const token = localStorage.getItem('token');
+            if (token && isTokenValid(token)) {
+                // User is already authenticated, redirect to chatbot
+                window.location.href = '/chatbot.html';
+                return true;
+            }
+            return false;
+        }
+
+        function isTokenValid(token) {
+            try {
+                // Decode JWT token to check expiration
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const currentTime = Math.floor(Date.now() / 1000);
+                return payload.exp > currentTime;
+            } catch (error) {
+                return false;
+            }
+        }
+
         // Setup event listeners
         window.addEventListener('load', function () {
+            // First check authentication
+            if (checkAuthentication()) {
+                return; // Don't proceed if redirecting
+            }
+            
             setupEventListeners();
             adjustTextareaHeight();
+            checkIfWaitingForResponse();
         });
 
         function setupEventListeners() {
@@ -86,10 +114,18 @@
 
             if (!message) return;
 
+            // Check if we're already waiting for a response
+            if (isWaitingForResponse()) {
+                return;
+            }
+
             // Add user message to chat
             addMessageToChat('user', message);
             messageInput.value = '';
             adjustTextareaHeight();
+
+            // Block input while waiting for response
+            setWaitingForResponse(true);
 
             // Show typing indicator
             showTypingIndicator();
@@ -116,6 +152,9 @@
                 hideTypingIndicator();
                 showErrorMessage('Failed to send message. Please try again.');
                 console.error('Send message error:', error);
+            } finally {
+                // Unblock input after response (success or error)
+                setWaitingForResponse(false);
             }
         }
 
@@ -183,6 +222,19 @@
         }
 
         function showErrorMessage(message) {
+            // Check if this is an authentication/authorization error that should redirect to login
+            if (shouldRedirectToLogin(message)) {
+                window.location.href = '/login';
+                return;
+            }
+
+            // Check if this is an API failure that should refresh the page
+            if (shouldRefreshPage(message)) {
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000); // Give user 2 seconds to see the error message
+            }
+
             // Remove any existing error messages
             const existingError = document.querySelector('.error-notification');
             if (existingError) {
@@ -204,12 +256,35 @@
             const chatContainer = document.querySelector('.chat-container');
             chatContainer.insertBefore(errorDiv, chatContainer.firstChild);
 
-            // Auto-hide after 5 seconds
-            setTimeout(() => {
-                if (errorDiv.parentNode) {
-                    errorDiv.remove();
-                }
-            }, 5000);
+            // Auto-hide after 5 seconds (unless page is refreshing)
+            if (!shouldRefreshPage(message)) {
+                setTimeout(() => {
+                    if (errorDiv.parentNode) {
+                        errorDiv.remove();
+                    }
+                }, 5000);
+            }
+        }
+
+        function shouldRedirectToLogin(message) {
+            // List of error messages that indicate authentication/authorization issues
+            const authErrorMessages = [
+                "Forbidden: Guest users cannot access session messages.",
+                "Forbidden: You do not have access to this session.",
+                "Guest users cannot create or access sessions.",
+                "No active session available for guest users."
+            ];
+            
+            return authErrorMessages.some(authMsg => message.includes(authMsg));
+        }
+
+        function shouldRefreshPage(message) {
+            // List of error messages that indicate API failures requiring page refresh
+            const apiFailureMessages = [
+                "Failed to get a reply from the API."
+            ];
+            
+            return apiFailureMessages.some(apiMsg => message.includes(apiMsg));
         }
 
         function processCodeBlocks(text) {
@@ -260,6 +335,42 @@
             });
 
             return text;
+        }
+
+        // Input blocking functionality
+        function isWaitingForResponse() {
+            const chatMessages = document.getElementById('chatMessages');
+            const messages = chatMessages.querySelectorAll('.message:not(.typing-indicator)');
+            
+            if (messages.length === 0) return false;
+            
+            const lastMessage = messages[messages.length - 1];
+            return lastMessage.classList.contains('user-message');
+        }
+
+        function setWaitingForResponse(waiting) {
+            const messageInput = document.getElementById('messageInput');
+            const sendBtn = document.getElementById('sendBtn');
+            
+            if (waiting) {
+                messageInput.disabled = true;
+                messageInput.placeholder = "Waiting for response...";
+                sendBtn.disabled = true;
+                sendBtn.style.opacity = '0.5';
+                sendBtn.style.cursor = 'not-allowed';
+            } else {
+                messageInput.disabled = false;
+                messageInput.placeholder = "Type your message here...";
+                sendBtn.disabled = false;
+                sendBtn.style.opacity = '1';
+                sendBtn.style.cursor = 'pointer';
+            }
+        }
+
+        function checkIfWaitingForResponse() {
+            if (isWaitingForResponse()) {
+                setWaitingForResponse(true);
+            }
         }
     </script>
 </body>

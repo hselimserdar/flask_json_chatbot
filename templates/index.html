@@ -1,29 +1,18 @@
 <!DOCTYPE html>
-    <div class="container">
-        <header>
-            <img src="{{ url_for('static', filename='icons/200px-logo.png') }}" alt="HSS GPT Logo" class="main-logo">
-            <h1>HSS GPT</h1>
-            <p class="subtitle">Your intelligent AI conversation partner</p>
-        </header> lang="en">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HSS GPT - AI Chatbot</title>
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/50px-logo.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-</head>E html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Chatbot - Welcome</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <div class="container">
         <header>
-            <h1>🤖 AI Chatbot</h1>
-            <p class="subtitle">Your intelligent conversation partner</p>
+            <img src="{{ url_for('static', filename='icons/200px-logo.png') }}" alt="HSS GPT Logo" class="main-logo">
+            <h1>HSS GPT</h1>
+            <p class="subtitle">Your intelligent AI conversation partner</p>
         </header>
         
         <main class="welcome-section">
@@ -42,16 +31,57 @@
                 </div>
             </div>
             
-            <div class="action-buttons">
-                <a href="/login" class="btn btn-primary">Login</a>
-                <a href="/register" class="btn btn-secondary">Sign Up</a>
-                <a href="/guest-chat" class="btn btn-outline">Try as Guest</a>
+            <div id="actionButtons" class="action-buttons">
+                <!-- Buttons will be populated by JavaScript based on authentication status -->
             </div>
         </main>
         
         <footer>
-            <p>&copy; 2025 AI Chatbot. All rights reserved.</p>
+            <p>&copy; 2025 HSS GPT. All rights reserved.</p>
         </footer>
     </div>
+
+    <script>
+        // Check authentication status on page load
+        window.addEventListener('load', function() {
+            checkAuthenticationStatus();
+        });
+
+        function checkAuthenticationStatus() {
+            const token = localStorage.getItem('token');
+            const actionButtons = document.getElementById('actionButtons');
+
+            if (token && isTokenValid(token)) {
+                // User is authenticated - show "Start Chatting" button
+                actionButtons.innerHTML = `
+                    <a href="/chatbot.html" class="btn btn-primary btn-large">Start Chatting</a>
+                    <button onclick="logout()" class="btn btn-outline">Logout</button>
+                `;
+            } else {
+                // User is not authenticated - show login/register options
+                actionButtons.innerHTML = `
+                    <a href="/login" class="btn btn-primary">Login</a>
+                    <a href="/register" class="btn btn-secondary">Sign Up</a>
+                    <a href="/guest-chat" class="btn btn-outline">Try as Guest</a>
+                `;
+            }
+        }
+
+        function isTokenValid(token) {
+            try {
+                // Decode JWT token to check expiration
+                const payload = JSON.parse(atob(token.split('.')[1]));
+                const currentTime = Math.floor(Date.now() / 1000);
+                return payload.exp > currentTime;
+            } catch (error) {
+                return false;
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            checkAuthenticationStatus(); // Refresh the buttons
+        }
+    </script>
 </body>
 </html>

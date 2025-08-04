@@ -189,6 +189,12 @@ header h1 {
     font-size: 0.875rem;
 }
 
+.btn-large {
+    padding: 1rem 2rem;
+    font-size: 1.125rem;
+    font-weight: 600;
+}
+
 .action-buttons {
     display: flex;
     gap: 1rem;
@@ -583,10 +589,18 @@ header h1 {
     cursor: pointer;
     margin-bottom: 0.25rem;
     transition: background-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: relative;
 }
 
 .session-item:hover {
     background-color: var(--bg-accent);
+}
+
+.session-item:hover .session-delete-btn {
+    opacity: 1;
 }
 
 .session-item.active {
@@ -594,14 +608,52 @@ header h1 {
     color: white;
 }
 
+.session-content {
+    flex: 1;
+    min-width: 0; /* Allow text truncation */
+}
+
 .session-title {
     font-weight: 500;
     margin-bottom: 0.25rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .session-date {
     font-size: 0.75rem;
     opacity: 0.7;
+}
+
+.session-delete-btn {
+    background: none;
+    border: none;
+    color: #ef4444;
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: var(--radius-sm);
+    opacity: 0;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 0.5rem;
+    flex-shrink: 0;
+}
+
+.session-delete-btn:hover {
+    background-color: rgba(239, 68, 68, 0.1);
+    color: #dc2626;
+}
+
+.session-item.active .session-delete-btn {
+    color: rgba(255, 255, 255, 0.8);
+}
+
+.session-item.active .session-delete-btn:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+    color: white;
 }
 
 .sidebar-pagination {
