@@ -1,17 +1,30 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Chatbot</title>
+    <title>HSS GPT</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/50px-logo.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <!-- pick a style you like; here’s GitHub-Dark -->
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <!-- load any extras if you want, but core already includes most langs -->
+    <!-- Arduino language definition -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/arduino.min.js"></script>
+    <script>hljs.highlightAll();</script>
+
 </head>
+
 <body>
     <div class="chat-container">
         <header class="chat-header">
             <div class="header-left">
                 <button id="mobileMenuBtn" class="mobile-menu-btn">☰</button>
-                <h1>🤖 AI Chatbot</h1>
+                <img src="{{ url_for('static', filename='icons/50px-logo.png') }}" alt="HSS GPT Logo" class="chat-logo">
+                <h1>HSS GPT</h1>
                 <span id="userInfo" class="user-info"></span>
             </div>
             <div class="header-right">
@@ -38,7 +51,7 @@
             <main class="chat-main">
                 <div id="chatMessages" class="chat-messages">
                     <div class="welcome-message">
-                        <h3>Welcome to AI Chatbot! 👋</h3>
+                        <h3>Welcome to HSS GPT! 👋</h3>
                         <p>Start a conversation by typing a message below.</p>
                     </div>
                 </div>
@@ -47,7 +60,8 @@
                     <div class="input-wrapper">
                         <textarea id="messageInput" placeholder="Type your message here..." rows="1"></textarea>
                         <button id="sendBtn" class="send-btn">
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2">
                                 <line x1="22" y1="2" x2="11" y2="13"></line>
                                 <polygon points="22,2 15,22 11,13 2,9"></polygon>
                             </svg>
@@ -64,7 +78,7 @@
         let isGuest = false;
 
         // Check authentication on page load
-        window.addEventListener('load', function() {
+        window.addEventListener('load', function () {
             const token = localStorage.getItem('token');
             if (!token) {
                 // Check if this is guest mode
@@ -110,7 +124,7 @@
         function setupEventListeners() {
             // Send message
             document.getElementById('sendBtn').addEventListener('click', sendMessage);
-            document.getElementById('messageInput').addEventListener('keypress', function(e) {
+            document.getElementById('messageInput').addEventListener('keypress', function (e) {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     sendMessage();
@@ -130,12 +144,12 @@
             if (!isGuest) {
                 document.getElementById('prevPage').addEventListener('click', () => changePage(currentPage - 1));
                 document.getElementById('nextPage').addEventListener('click', () => changePage(currentPage + 1));
-                
+
                 // Mobile menu toggle
                 document.getElementById('mobileMenuBtn').addEventListener('click', toggleMobileSidebar);
-                
+
                 // Close mobile sidebar when clicking outside
-                document.addEventListener('click', function(e) {
+                document.addEventListener('click', function (e) {
                     if (window.innerWidth <= 768) {
                         const sidebar = document.getElementById('sessionsSidebar');
                         const menuBtn = document.getElementById('mobileMenuBtn');
@@ -150,7 +164,7 @@
         async function sendMessage() {
             const messageInput = document.getElementById('messageInput');
             const message = messageInput.value.trim();
-            
+
             if (!message) return;
 
             // Add user message to chat
@@ -192,7 +206,7 @@
                         // Fallback to direct reply field
                         botMessage = data.reply || '';
                     }
-                    
+
                     if (botMessage) {
                         addMessageToChat('bot', botMessage);
                     } else {
@@ -210,7 +224,7 @@
 
         function addMessageToChat(sender, message, timestamp = null) {
             const chatMessages = document.getElementById('chatMessages');
-            
+
             // Remove welcome message if it exists
             const welcomeMessage = chatMessages.querySelector('.welcome-message');
             if (welcomeMessage) {
@@ -219,17 +233,17 @@
 
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${sender}-message`;
-            
+
             const messageContent = document.createElement('div');
             messageContent.className = 'message-content';
-            
+
             // Process message for code blocks
             const processedMessage = processCodeBlocks(message);
             messageContent.innerHTML = processedMessage;
-            
+
             const timestampDiv = document.createElement('div');
             timestampDiv.className = 'message-timestamp';
-            
+
             // Use provided timestamp or current time for new messages
             if (timestamp) {
                 const messageTime = new Date(timestamp);
@@ -237,12 +251,15 @@
             } else {
                 timestampDiv.textContent = new Date().toLocaleTimeString();
             }
-            
+
             messageDiv.appendChild(messageContent);
             messageDiv.appendChild(timestampDiv);
-            
+
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
+            const newBlocks = messageDiv.querySelectorAll("pre code");
+            newBlocks.forEach(block => hljs.highlightElement(block));
+
         }
 
         function showErrorMessage(message) {
@@ -301,6 +318,8 @@
         async function loadSessions(page = 1) {
             if (isGuest) return;
 
+            console.log(`Loading sessions for page: ${page}`);
+
             try {
                 const response = await fetch(`/chatbot/session?page=${page}`, {
                     headers: {
@@ -309,19 +328,21 @@
                 });
 
                 const data = await response.json();
-                
+                console.log('Sessions response:', data);
+
                 if (response.ok) {
                     displaySessions(data.sessions || []);
                     currentPage = page;
+                    console.log(`Updated currentPage to: ${currentPage}, has_next: ${data.has_next}, has_previous: ${data.has_previous}`);
                     updatePagination(data.has_next, data.has_previous);
                 } else {
-                    document.getElementById('sessionsList').innerHTML = 
+                    document.getElementById('sessionsList').innerHTML =
                         '<div class="no-sessions">No sessions found</div>';
                 }
             } catch (error) {
                 console.error('Load sessions error:', error);
                 showErrorMessage('Failed to load sessions. Please try again.');
-                document.getElementById('sessionsList').innerHTML = 
+                document.getElementById('sessionsList').innerHTML =
                     '<div class="error-sessions">Failed to load sessions</div>';
             }
         }
@@ -367,7 +388,7 @@
                 });
 
                 const data = await response.json();
-                
+
                 if (response.ok) {
                     currentSessionId = sessionId;
                     updateURL();
@@ -420,7 +441,7 @@
             document.querySelectorAll('.session-item').forEach(item => {
                 item.classList.remove('active');
             });
-            
+
             // Add active class to current session
             if (sessionId) {
                 const activeSession = document.querySelector(`[data-session-id="${sessionId}"]`);
@@ -441,13 +462,44 @@
         }
 
         function updatePagination(hasNext, hasPrevious) {
-            document.getElementById('prevPage').disabled = !hasPrevious;
-            document.getElementById('nextPage').disabled = !hasNext;
+            console.log(`Updating pagination - hasNext: ${hasNext}, hasPrevious: ${hasPrevious}, currentPage: ${currentPage}`);
+
+            const prevBtn = document.getElementById('prevPage');
+            const nextBtn = document.getElementById('nextPage');
+
+            prevBtn.disabled = !hasPrevious;
+            nextBtn.disabled = !hasNext;
+
             document.getElementById('pageInfo').textContent = `Page ${currentPage}`;
+
+            console.log(`Previous button disabled: ${prevBtn.disabled}, Next button disabled: ${nextBtn.disabled}`);
         }
 
         function changePage(page) {
-            if (page < 1) return;
+            console.log(`changePage called with page: ${page}, currentPage: ${currentPage}`);
+
+            if (page < 1) {
+                console.log('Page < 1, returning');
+                return;
+            }
+
+            // Check if the button should be disabled
+            const prevBtn = document.getElementById('prevPage');
+            const nextBtn = document.getElementById('nextPage');
+
+            console.log(`Previous button disabled: ${prevBtn.disabled}, Next button disabled: ${nextBtn.disabled}`);
+
+            // Don't allow clicking if button is disabled
+            if (page < currentPage && prevBtn.disabled) {
+                console.log('Previous button is disabled, returning');
+                return;
+            }
+            if (page > currentPage && nextBtn.disabled) {
+                console.log('Next button is disabled, returning');
+                return;
+            }
+
+            console.log(`Loading sessions for page: ${page}`);
             loadSessions(page);
         }
 
@@ -462,102 +514,55 @@
         }
 
         function processCodeBlocks(text) {
-            // First, extract and temporarily replace code blocks to protect them
+            // helper to escape <, > and &
+            const escapeHtml = str =>
+                str.replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;");
+
+            // 1) Pull out fenced-code blocks into placeholders
             const codeBlocks = [];
-            let codeBlockIndex = 0;
-            
-            // Extract code blocks with language specification
-            text = text.replace(/```(\w+)?\n?([\s\S]*?)```/g, (match, language, code) => {
-                const lang = language || 'text';
-                const placeholder = `__CODE_BLOCK_${codeBlockIndex}__`;
-                codeBlocks[codeBlockIndex] = {
-                    type: 'block',
-                    language: lang,
-                    code: code.trim()
-                };
-                codeBlockIndex++;
-                return placeholder;
-            });
-
-            // Extract inline code
-            text = text.replace(/`([^`\n]+)`/g, (match, code) => {
-                const placeholder = `__CODE_BLOCK_${codeBlockIndex}__`;
-                codeBlocks[codeBlockIndex] = {
-                    type: 'inline',
-                    code: code
-                };
-                codeBlockIndex++;
-                return placeholder;
-            });
-
-            // Escape HTML in the remaining text
-            text = text
-                .replace(/&/g, "&amp;")
-                .replace(/</g, "&lt;")
-                .replace(/>/g, "&gt;")
-                .replace(/"/g, "&quot;")
-                .replace(/'/g, "&#039;");
-
-            // Process markdown formatting
-            // Bold text: **text** or __text__
-            text = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-            text = text.replace(/__(.*?)__/g, '<strong>$1</strong>');
-            
-            // Italic text: *text* or _text_ (using a different approach for better compatibility)
-            // First handle cases where * is not part of **
-            text = text.replace(/\*([^*\n]+?)\*/g, function(match, content, offset, string) {
-                // Check if this * is part of **
-                if (offset > 0 && string[offset - 1] === '*') return match;
-                if (offset + match.length < string.length && string[offset + match.length] === '*') return match;
-                return '<em>' + content + '</em>';
-            });
-            
-            // Handle underscore italics (not part of __)
-            text = text.replace(/_([^_\n]+?)_/g, function(match, content, offset, string) {
-                // Check if this _ is part of __
-                if (offset > 0 && string[offset - 1] === '_') return match;
-                if (offset + match.length < string.length && string[offset + match.length] === '_') return match;
-                return '<em>' + content + '</em>';
-            });
-
-            // Process bullet points
-            text = text.replace(/^\*\s+(.+)$/gm, '<li>$1</li>');
-            text = text.replace(/^-\s+(.+)$/gm, '<li>$1</li>');
-            
-            // Wrap consecutive list items in <ul> tags
-            text = text.replace(/(<li>.*<\/li>\s*)+/gs, (match) => {
-                return '<ul>' + match + '</ul>';
-            });
-
-            // Convert line breaks to <br> tags
-            text = text.replace(/\n/g, '<br>');
-
-            // Restore code blocks with proper formatting
-            codeBlocks.forEach((block, index) => {
-                const placeholder = `__CODE_BLOCK_${index}__`;
-                if (block.type === 'block') {
-                    const escapedCode = block.code
-                        .replace(/&/g, "&amp;")
-                        .replace(/</g, "&lt;")
-                        .replace(/>/g, "&gt;")
-                        .replace(/"/g, "&quot;")
-                        .replace(/'/g, "&#039;");
-                    const replacement = `<div class="code-block"><div class="code-header">${block.language}</div><pre><code class="language-${block.language}">${escapedCode}</code></pre></div>`;
-                    text = text.replace(placeholder, replacement);
-                } else if (block.type === 'inline') {
-                    const escapedCode = block.code
-                        .replace(/&/g, "&amp;")
-                        .replace(/</g, "&lt;")
-                        .replace(/>/g, "&gt;")
-                        .replace(/"/g, "&quot;")
-                        .replace(/'/g, "&#039;");
-                    const replacement = `<code class="inline-code">${escapedCode}</code>`;
-                    text = text.replace(placeholder, replacement);
+            text = text.replace(
+                /```(\w+)?\r?\n([\s\S]*?)```/g,
+                (_, lang = "text", code) => {
+                    const id = codeBlocks.length;
+                    codeBlocks.push({ lang, code });
+                    return `@@CODE${id}@@`;
                 }
+            );
+
+            // 2) Escape the rest of the text
+            text = escapeHtml(text);
+
+            // 3) Markdown → HTML on non-code text
+            text = text
+                // bold
+                .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+                .replace(/__(.*?)__/g, "<strong>$1</strong>")
+                // italics (avoid ** conflict)
+                .replace(/(^|[^*])\*([^*\n][^*]*?)\*(?!\*)/g, "$1<em>$2</em>")
+                .replace(/(^|[^_])_([^_\n][^_]*?)_(?!_)/g, "$1<em>$2</em>")
+                // bullets
+                .replace(/^\s*[-*]\s+(.+)$/gm, "<li>$1</li>")
+                .replace(/(<li>.*<\/li>)+/gs, m => `<ul>${m}</ul>`)
+                // finally turn newlines into <br>
+                .replace(/\n/g, "<br>");
+
+            // 4) Restore each code block, escaping its interior but leaving its newlines
+            codeBlocks.forEach(({ lang, code }, i) => {
+                const blockHtml =
+                    `<div class="code-block">` +
+                    `<div class="code-header">${lang}</div>` +
+                    `<pre><code class="language-${lang}">` +
+                    escapeHtml(code) +
+                    `</code></pre>` +
+                    `</div>`;
+                text = text.replace(new RegExp(`@@CODE${i}@@`, "g"), blockHtml);
             });
 
             return text;
         }
     </script>
 </body>
+
 </html>

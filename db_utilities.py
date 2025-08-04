@@ -40,7 +40,7 @@ def get_created_at_for_session(session_id):
 def print_sessions(username, page):
     if page is None or page < 1:
         page = 1
-    pagination_count = 25
+    pagination_count = 9
     offset = (page - 1) * pagination_count
 
     conn = sqlite3.connect('database.sqlite')
@@ -59,6 +59,8 @@ def print_sessions(username, page):
                 "page": page,
                 "per_page": pagination_count,
                 "total_sessions": 0,
+                "has_previous": False,
+                "has_next": False,
             }
             if debugging:
                 print(f"print_sessions({username}) ->", result)
@@ -68,7 +70,7 @@ def print_sessions(username, page):
         total_sessions = cur.fetchone()[0]
 
         cur.execute(
-            "SELECT id, title FROM session WHERE user_id = ? ORDER BY id ASC LIMIT ? OFFSET ?",
+            "SELECT id, title FROM session WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
             (user_id, pagination_count, offset),
         )
         session_rows = cur.fetchall()
@@ -76,9 +78,15 @@ def print_sessions(username, page):
         for sid, title in session_rows:
             sessions.append({"id": sid, "user_id": user_id, "title": title, "created_at": get_created_at_for_session(sid)})
 
+        # Calculate pagination flags
+        has_previous = page > 1
+        has_next = (offset + pagination_count) < total_sessions
+
         result = {
             "meta": {"id": user_id, "username": username, "page": page, "per_page": pagination_count, "total_sessions": total_sessions},
             "sessions": sessions,
+            "has_previous": has_previous,
+            "has_next": has_next,
         }
 
         if debugging:
@@ -94,6 +102,8 @@ def print_sessions(username, page):
             "page": page,
             "per_page": pagination_count,
             "total_sessions": 0,
+            "has_previous": False,
+            "has_next": False,
         }
 
     finally:

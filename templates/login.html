@@ -3,14 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - AI Chatbot</title>
+    <title>Login - HSS GPT</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/50px-logo.png') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
     <div class="container">
         <div class="auth-form">
+            <div class="auth-logo-container">
+                <img src="{{ url_for('static', filename='icons/100px-logo.png') }}" alt="HSS GPT Logo" class="auth-logo">
+            </div>
             <h2>Welcome Back</h2>
-            <p class="auth-subtitle">Sign in to continue your conversations</p>
+            <p class="auth-subtitle">Sign in to continue your conversations with HSS GPT</p>
             
             <form id="loginForm">
                 <div class="form-group">

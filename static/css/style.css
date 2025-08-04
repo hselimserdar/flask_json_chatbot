@@ -50,6 +50,31 @@ body {
     flex-direction: column;
 }
 
+/* Logo styles */
+.main-logo {
+    width: 200px;
+    height: auto;
+    margin-bottom: 1rem;
+}
+
+.chat-logo {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+    margin-right: 0.5rem;
+}
+
+.auth-logo-container {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.auth-logo {
+    width: 80px;
+    height: auto;
+    object-fit: contain;
+}
+
 /* Header styles */
 header {
     text-align: center;
@@ -464,14 +489,14 @@ header h1 {
 .header-left {
     display: flex;
     align-items: center;
-    gap: 1rem;
+    gap: 0.75rem;
 }
 
 .header-left h1 {
     font-size: 1.5rem;
     font-weight: 600;
     color: var(--primary-color);
-    margin-bottom: 0.25rem;
+    margin-bottom: 0;
 }
 
 .mobile-menu-btn {
@@ -828,6 +853,19 @@ footer {
 
     .header-left h1 {
         font-size: 1.25rem;
+    }
+
+    .chat-logo {
+        width: 32px;
+        height: 32px;
+    }
+
+    .main-logo {
+        width: 150px;
+    }
+
+    .auth-logo {
+        width: 60px;
     }
 
     .user-info {

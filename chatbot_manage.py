@@ -43,6 +43,7 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                  "content": "Give me a very short (3-5 word) title summarizing this conversation so far."
                  "Just return the title without any additional text. It should be concise and descriptive."
                  "Do not go beyond 5 words. Do not use quotes or any other punctuation. Do not use 'title' in the response."
+                 "Do not say here is the title or anything similar. Answer in language of the user's prompt."
                  "Do not use any special characters or formatting. Just 3 to 5 plain words."},
                 {"author": "assistant", "content": "GPT Conversation Summary: " + summary}
             ]
@@ -113,6 +114,7 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                     "content": "Give me a very short (3-5 word) title summarizing this conversation so far."
                     "Just return the title without any additional text. It should be concise and descriptive."
                     "Do not go beyond 5 words. Do not use quotes or any other punctuation. Do not use 'title' in the response."
+                    "Do not say here is the title or anything similar. Answer in language of the user's prompt."
                     "Do not use any special characters or formatting. Just 3 to 5 plain words."},
                     {"author": "assistant", "content": "GPT Conversation Summary: " + summary}
                 ]
