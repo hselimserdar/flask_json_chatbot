@@ -13,29 +13,40 @@ def is_session_owner(username, session_id):
     conn.execute('PRAGMA foreign_keys = ON;')
     cur = conn.cursor()
     try:
+        if debugging:
+            print(f"is_session_owner: Checking user '{username}' for session '{session_id}'")
+        
         cur.execute("SELECT id FROM user WHERE username = ?", (username,))
-        user_row = cur.fetchone()
-        if not user_row:
+        row = cur.fetchone()
+        if not row:
+            if debugging:
+                print(f"is_session_owner: User '{username}' not found")
             return False
-        user_id = user_row[0]
+        user_id = row[0]
+        if debugging:
+            print(f"is_session_owner: Found user_id={user_id}")
 
         cur.execute(
             "SELECT user_id, isDeleted FROM session WHERE id = ?",
             (session_id,)
         )
-        sess_row = cur.fetchone()
-        if not sess_row:
+        sess = cur.fetchone()
+        if not sess:
+            if debugging:
+                print(f"is_session_owner: Session {session_id} not found")
             return False
+        owner_id, is_deleted = sess
+        if debugging:
+            print(f"is_session_owner: Session {session_id} isDeleted={is_deleted}")
 
-        owner_id, is_deleted = sess_row
-        if is_deleted:
+        if str(is_deleted).upper() == 'TRUE':
             if debugging:
                 print(f"is_session_owner: session {session_id} is marked deleted")
             return False
 
         is_owner = (owner_id == user_id)
         if debugging:
-            print(f"is_session_owner({username}, {session_id}) -> {is_owner}")
+            print(f"is_session_owner({username},{session_id}) -> {is_owner}")
         return is_owner
 
     except sqlite3.Error as e:
@@ -91,25 +102,22 @@ def print_sessions(username, page):
         user_id = row[0] if row else None
 
         if user_id is None:
-            result = {
-                "meta": {"id": None, "username": username, "page": page, "per_page": per_page, "total_sessions": 0},
-                "sessions": [],
-                "has_previous": False,
-                "has_next": False,
+            return {
+                "meta": {"id": None, "username": username, "page": page,
+                         "per_page": per_page, "total_sessions": 0},
+                "sessions": [], "has_previous": False, "has_next": False
             }
-            if debugging:
-                print(f"print_sessions({username}) ->", result)
-            return result
 
         cur.execute(
-            "SELECT COUNT(*) FROM session WHERE user_id = ? AND isDeleted = FALSE",
+            "SELECT COUNT(*) FROM session "
+            "WHERE user_id = ? AND isDeleted = 'FALSE'",
             (user_id,)
         )
         total_sessions = cur.fetchone()[0]
 
         cur.execute(
             "SELECT id, title FROM session "
-            "WHERE user_id = ? AND isDeleted = FALSE "
+            "WHERE user_id = ? AND isDeleted = 'FALSE' "
             "ORDER BY id DESC LIMIT ? OFFSET ?",
             (user_id, per_page, offset)
         )
@@ -148,16 +156,14 @@ def print_sessions(username, page):
         if debugging:
             print("SQLite error in print_sessions:", e)
         return {
-            "meta": {"id": user_id if 'user_id' in locals() else None, "username": username, "page": page, "per_page": per_page, "total_sessions": 0},
-            "sessions": [],
-            "has_previous": False,
-            "has_next": False,
+            "meta": {"id": user_id, "username": username, "page": page,
+                     "per_page": per_page, "total_sessions": 0},
+            "sessions": [], "has_previous": False, "has_next": False
         }
 
     finally:
         cur.close()
         conn.close()
-
 
 def get_user_id(username):
     conn = sqlite3.connect('database.sqlite')
@@ -234,7 +240,7 @@ def get_messages_for_session(session_id):
         user_id = row[0] if row else None
 
         cur.execute(
-            "SELECT id, sender, content, created_at "
+            "SELECT rowid, sender, content, created_at "
             "FROM message "
             "WHERE session_id = ? "
             "ORDER BY created_at",
@@ -243,25 +249,27 @@ def get_messages_for_session(session_id):
         rows = cur.fetchall()
 
         messages = []
-        for id, sender, content, created_at in rows:
-            if isinstance(created_at, (datetime.datetime,)):
+        for msg_id, sender, content, created_at in rows:
+            if isinstance(created_at, datetime.datetime):
                 created_at = created_at.isoformat()
             messages.append({
-                'id': id,
+                'id':         msg_id,
                 'session_id': session_id,
-                'user_id': user_id,
-                'sender': sender,
-                'content': content,
+                'user_id':    user_id,
+                'sender':     sender,
+                'content':    content,
                 'created_at': created_at
             })
 
         if debugging:
             print(f"Fetched {len(messages)} messages for session_id={session_id}")
-        return {"data": messages}
+        return {'data': messages}
+
     except sqlite3.Error as e:
         if debugging:
             print("SQLite error in get_messages_for_session:", e)
-        return {"data": []}
+        return {'data': []}
+
     finally:
         cur.close()
         conn.close()
@@ -271,10 +279,6 @@ def delete_session_for_user(username, session_id):
     conn.execute('PRAGMA foreign_keys = ON;')
     cur = conn.cursor()
     try:
-        if is_session_owner(username, session_id) is False:
-            if debugging:
-                print(f"delete_session_for_user: user '{username}' does not own session {session_id}")
-            return False
         cur.execute("SELECT id FROM user WHERE username = ?", (username,))
         row = cur.fetchone()
         if not row:
@@ -285,7 +289,7 @@ def delete_session_for_user(username, session_id):
 
         cur.execute(
             "UPDATE session "
-            "SET isDeleted = TRUE "
+            "SET isDeleted = 'TRUE' "
             "WHERE id = ? AND user_id = ?",
             (session_id, user_id)
         )

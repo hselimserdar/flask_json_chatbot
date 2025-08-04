@@ -171,15 +171,17 @@ def create_session_for_user(username, title=None):
                 print(f"User '{username}' not found; cannot create session.")
             return None
         user_id = row[0]
-
         cur.execute(
-            "INSERT INTO session (user_id, title, isDeleted) VALUES (?, ?, FALSE)",
-            (user_id, title)
+            "INSERT INTO session (user_id, title, isDeleted) VALUES (?, ?, ?)",
+            (user_id, title, 'FALSE')
         )
         conn.commit()
         session_id = cur.lastrowid
         if debugging:
-            print(f"Created session id={session_id} for username='{username}' (user_id={user_id}) with isDeleted=FALSE")
+            print(
+                f"Created session id={session_id} for username='{username}' "
+                f"(user_id={user_id}) with isDeleted='FALSE'"
+            )
         return session_id
 
     except sqlite3.Error as e:

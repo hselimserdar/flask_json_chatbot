@@ -143,7 +143,14 @@ def delete_session():
             print("Guest user attempted to delete a session")
         return {"message": "Forbidden: Guests cannot delete sessions."}, 403
 
-    if not is_session_owner(user, session_id):
+    if debugging:
+        print(f"Checking ownership: user='{user}', session_id='{session_id}'")
+    
+    ownership_result = is_session_owner(user, session_id)
+    if debugging:
+        print(f"Ownership check result: {ownership_result}")
+    
+    if not ownership_result:
         if debugging:
             print(f"User {user} is not owner of session {session_id}")
         return {"message": "Forbidden: You do not have access to delete this session."}, 403

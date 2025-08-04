@@ -304,8 +304,8 @@ header h1 {
     text-decoration: underline;
 }
 
-/* Message styles */
-.message {
+/* Message styles for auth pages */
+.auth-form .message {
     margin-top: 1rem;
     padding: 1rem 1.5rem;
     border-radius: var(--radius-lg);
@@ -320,7 +320,7 @@ header h1 {
     transform: translateY(0);
 }
 
-.message:hover {
+.auth-form .message:hover {
     transform: translateY(-1px);
     box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
 }
