@@ -143,8 +143,22 @@
                 hideTypingIndicator();
 
                 if (response.ok) {
-                    const botMessage = data.reply || data.message || 'I received your message but had trouble responding.';
-                    addMessageToChat('bot', botMessage);
+                    // Fix: check if data has the expected structure
+                    let botMessage = '';
+                    if (data.messages && data.messages.length > 1) {
+                        // Get bot message from messages array
+                        const botMsg = data.messages.find(msg => msg.sender === 'bot');
+                        botMessage = botMsg ? botMsg.content : '';
+                    } else {
+                        // Fallback to direct reply field
+                        botMessage = data.reply || data.message || '';
+                    }
+
+                    if (botMessage) {
+                        addMessageToChat('bot', botMessage);
+                    } else {
+                        addMessageToChat('bot', 'I received your message but had trouble responding.');
+                    }
                 } else {
                     showErrorMessage(data.message || 'An error occurred');
                 }

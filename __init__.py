@@ -196,7 +196,10 @@ def chatbot():
             return {"message": "Guest users cannot create or access sessions."}, 403
         if debugging:
             print("Chatbot accessed by guest user, sessions will not be saved")
+            print("Prompt:", message)
         reply = chat_with_gemini(user, message, session_id=None, first_message=True)
+        if debugging:
+            print("Reply from Gemini API:", reply)
         if not reply:
             if debugging:
                 print("Failed to get a reply from Gemini API")
