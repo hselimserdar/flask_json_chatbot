@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chatbot - Welcome</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🤖 AI Chatbot</h1>
+            <p class="subtitle">Your intelligent conversation partner</p>
+        </header>
+        
+        <main class="welcome-section">
+            <div class="feature-grid">
+                <div class="feature-card">
+                    <h3>💬 Smart Conversations</h3>
+                    <p>Engage in intelligent conversations powered by advanced AI</p>
+                </div>
+                <div class="feature-card">
+                    <h3>📝 Session Management</h3>
+                    <p>Keep track of your conversation history across sessions</p>
+                </div>
+                <div class="feature-card">
+                    <h3>🔐 Secure Access</h3>
+                    <p>Your conversations are private and secure</p>
+                </div>
+            </div>
+            
+            <div class="action-buttons">
+                <a href="/login" class="btn btn-primary">Login</a>
+                <a href="/register" class="btn btn-secondary">Sign Up</a>
+                <a href="/guest-chat" class="btn btn-outline">Try as Guest</a>
+            </div>
+        </main>
+        
+        <footer>
+            <p>&copy; 2025 AI Chatbot. All rights reserved.</p>
+        </footer>
+    </div>
+</body>
+</html>

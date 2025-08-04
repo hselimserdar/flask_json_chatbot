@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Chatbot</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="chat-container">
+        <header class="chat-header">
+            <div class="header-left">
+                <h1>🤖 AI Chatbot</h1>
+                <span id="userInfo" class="user-info"></span>
+            </div>
+            <div class="header-right">
+                <button id="newSessionBtn" class="btn btn-secondary">New Chat</button>
+                <button id="logoutBtn" class="btn btn-outline">Logout</button>
+            </div>
+        </header>
+
+        <div class="chat-layout">
+            <aside id="sessionsSidebar" class="sessions-sidebar open">
+                <div class="sidebar-header">
+                    <h3>Your Sessions</h3>
+                </div>
+                <div id="sessionsList" class="sessions-list">
+                    <!-- Sessions will be loaded here -->
+                </div>
+                <div class="sidebar-pagination">
+                    <button id="prevPage" class="btn btn-outline btn-small">Previous</button>
+                    <span id="pageInfo">Page 1</span>
+                    <button id="nextPage" class="btn btn-outline btn-small">Next</button>
+                </div>
+            </aside>
+
+            <main class="chat-main">
+                <div id="chatMessages" class="chat-messages">
+                    <div class="welcome-message">
+                        <h3>Welcome to AI Chatbot! 👋</h3>
+                        <p>Start a conversation by typing a message below.</p>
+                    </div>
+                </div>
+
+                <div class="chat-input-container">
+                    <div class="input-wrapper">
+                        <textarea id="messageInput" placeholder="Type your message here..." rows="1"></textarea>
+                        <button id="sendBtn" class="send-btn">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <line x1="22" y1="2" x2="11" y2="13"></line>
+                                <polygon points="22,2 15,22 11,13 2,9"></polygon>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        let currentSessionId = null;
+        let currentPage = 1;
+        let isGuest = false;
+
+        // Check authentication on page load
+        window.addEventListener('load', function() {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                // Check if this is guest mode
+                const urlParams = new URLSearchParams(window.location.search);
+                if (urlParams.get('mode') === 'guest') {
+                    isGuest = true;
+                    currentSessionId = 'guest';
+                    document.getElementById('userInfo').textContent = 'Guest User';
+                    document.getElementById('newSessionBtn').style.display = 'none';
+                    // Hide sessions sidebar for guest users
+                    document.getElementById('sessionsSidebar').style.display = 'none';
+                    document.querySelector('.chat-main').style.marginLeft = '0';
+                } else {
+                    window.location.href = '/login';
+                    return;
+                }
+            } else {
+                // Verify token and get user info
+                verifyToken();
+                // Load sessions immediately for authenticated users
+                loadSessions(currentPage);
+            }
+
+            setupEventListeners();
+            adjustTextareaHeight();
+        });
+
+        async function verifyToken() {
+            const token = localStorage.getItem('token');
+            try {
+                // You might want to add a verification endpoint
+                document.getElementById('userInfo').textContent = 'Authenticated User';
+            } catch (error) {
+                console.error('Token verification failed:', error);
+                localStorage.removeItem('token');
+                window.location.href = '/login';
+            }
+        }
+
+        function setupEventListeners() {
+            // Send message
+            document.getElementById('sendBtn').addEventListener('click', sendMessage);
+            document.getElementById('messageInput').addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                }
+            });
+
+            // Auto-resize textarea
+            document.getElementById('messageInput').addEventListener('input', adjustTextareaHeight);
+
+            // New session
+            document.getElementById('newSessionBtn').addEventListener('click', startNewSession);
+
+            // Logout
+            document.getElementById('logoutBtn').addEventListener('click', logout);
+
+            // Pagination (only for authenticated users)
+            if (!isGuest) {
+                document.getElementById('prevPage').addEventListener('click', () => changePage(currentPage - 1));
+                document.getElementById('nextPage').addEventListener('click', () => changePage(currentPage + 1));
+            }
+        }
+
+        async function sendMessage() {
+            const messageInput = document.getElementById('messageInput');
+            const message = messageInput.value.trim();
+            
+            if (!message) return;
+
+            // Add user message to chat
+            addMessageToChat('user', message);
+            messageInput.value = '';
+            adjustTextareaHeight();
+
+            // Show typing indicator
+            showTypingIndicator();
+
+            try {
+                const url = currentSessionId ? `/chatbot?session=${currentSessionId}` : '/chatbot';
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(isGuest ? {} : { 'Authorization': `Bearer ${localStorage.getItem('token')}` })
+                    },
+                    body: JSON.stringify({ message })
+                });
+
+                const data = await response.json();
+                hideTypingIndicator();
+
+                if (response.ok) {
+                    if (data.session_id && !currentSessionId) {
+                        currentSessionId = data.session_id;
+                        updateURL();
+                        // Reload sessions to show the new session
+                        loadSessions(currentPage);
+                    }
+                    // Fix: check if data has the expected structure
+                    let botMessage = '';
+                    if (data.messages && data.messages.length > 1) {
+                        // Get bot message from messages array
+                        const botMsg = data.messages.find(msg => msg.sender === 'bot');
+                        botMessage = botMsg ? botMsg.content : '';
+                    } else {
+                        // Fallback to direct reply field
+                        botMessage = data.reply || '';
+                    }
+                    
+                    if (botMessage) {
+                        addMessageToChat('bot', botMessage);
+                    } else {
+                        showErrorMessage('Received empty response from the chatbot. Please try again.');
+                    }
+                } else {
+                    showErrorMessage(data.message || 'An error occurred');
+                }
+            } catch (error) {
+                hideTypingIndicator();
+                showErrorMessage('Failed to send message. Please try again.');
+                console.error('Send message error:', error);
+            }
+        }
+
+        function addMessageToChat(sender, message) {
+            const chatMessages = document.getElementById('chatMessages');
+            
+            // Remove welcome message if it exists
+            const welcomeMessage = chatMessages.querySelector('.welcome-message');
+            if (welcomeMessage) {
+                welcomeMessage.remove();
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${sender}-message`;
+            
+            const messageContent = document.createElement('div');
+            messageContent.className = 'message-content';
+            messageContent.textContent = message;
+            
+            const timestamp = document.createElement('div');
+            timestamp.className = 'message-timestamp';
+            timestamp.textContent = new Date().toLocaleTimeString();
+            
+            messageDiv.appendChild(messageContent);
+            messageDiv.appendChild(timestamp);
+            
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function showErrorMessage(message) {
+            // Remove any existing error messages
+            const existingError = document.querySelector('.error-notification');
+            if (existingError) {
+                existingError.remove();
+            }
+
+            // Create error notification
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error-notification';
+            errorDiv.innerHTML = `
+                <div class="error-content">
+                    <span class="error-icon">⚠️</span>
+                    <span class="error-text">${message}</span>
+                    <button class="error-close" onclick="this.parentElement.parentElement.remove()">×</button>
+                </div>
+            `;
+
+            // Insert at the top of chat container
+            const chatContainer = document.querySelector('.chat-container');
+            chatContainer.insertBefore(errorDiv, chatContainer.firstChild);
+
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                if (errorDiv.parentNode) {
+                    errorDiv.remove();
+                }
+            }, 5000);
+        }
+
+        function showTypingIndicator() {
+            const chatMessages = document.getElementById('chatMessages');
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message bot-message typing-indicator';
+            typingDiv.id = 'typingIndicator';
+            typingDiv.innerHTML = '<div class="message-content">Typing<span class="dots">...</span></div>';
+            chatMessages.appendChild(typingDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function hideTypingIndicator() {
+            const typingIndicator = document.getElementById('typingIndicator');
+            if (typingIndicator) {
+                typingIndicator.remove();
+            }
+        }
+
+        function adjustTextareaHeight() {
+            const textarea = document.getElementById('messageInput');
+            textarea.style.height = 'auto';
+            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+        }
+
+        async function toggleSessionsSidebar() {
+            const sidebar = document.getElementById('sessionsSidebar');
+            if (sidebar.classList.contains('open')) {
+                closeSessionsSidebar();
+            } else {
+                await loadSessions();
+                sidebar.classList.add('open');
+            }
+        }
+
+        function closeSessionsSidebar() {
+            document.getElementById('sessionsSidebar').classList.remove('open');
+        }
+
+        async function loadSessions(page = 1) {
+            if (isGuest) return;
+
+            try {
+                const response = await fetch(`/chatbot/session?page=${page}`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    displaySessions(data.sessions || []);
+                    currentPage = page;
+                    updatePagination(data.has_next, data.has_previous);
+                } else {
+                    document.getElementById('sessionsList').innerHTML = 
+                        '<div class="no-sessions">No sessions found</div>';
+                }
+            } catch (error) {
+                console.error('Load sessions error:', error);
+                showErrorMessage('Failed to load sessions. Please try again.');
+                document.getElementById('sessionsList').innerHTML = 
+                    '<div class="error-sessions">Failed to load sessions</div>';
+            }
+        }
+
+        function displaySessions(sessions) {
+            const sessionsList = document.getElementById('sessionsList');
+            sessionsList.innerHTML = '';
+
+            sessions.forEach(session => {
+                const sessionDiv = document.createElement('div');
+                sessionDiv.className = 'session-item';
+                if (session.id === currentSessionId) {
+                    sessionDiv.classList.add('active');
+                }
+
+                // Handle created_at properly
+                const createdAt = session.created_at ? new Date(session.created_at).toLocaleDateString() : 'Unknown date';
+
+                sessionDiv.innerHTML = `
+                    <div class="session-title">${session.title || 'Session ' + session.id}</div>
+                    <div class="session-date">${createdAt}</div>
+                `;
+
+                sessionDiv.addEventListener('click', () => loadSession(session.id));
+                sessionsList.appendChild(sessionDiv);
+            });
+        }
+
+        async function loadSession(sessionId) {
+            try {
+                const response = await fetch(`/chatbot/message?session=${sessionId}`, {
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('token')}`
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok) {
+                    currentSessionId = sessionId;
+                    updateURL();
+                    displayMessages(data.data || []); // Fix: use data.data instead of data.messages
+                    closeSessionsSidebar();
+                } else {
+                    showErrorMessage(data.message || 'Failed to load session');
+                }
+            } catch (error) {
+                console.error('Load session error:', error);
+                showErrorMessage('Failed to load session. Please try again.');
+            }
+        }
+
+        function displayMessages(messages) {
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.innerHTML = '';
+
+            if (messages.length === 0) {
+                chatMessages.innerHTML = `
+                    <div class="welcome-message">
+                        <h3>Session Loaded! 👋</h3>
+                        <p>Continue your conversation or start a new topic.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            messages.forEach(msg => {
+                addMessageToChat(msg.sender, msg.content);
+            });
+        }
+
+        function startNewSession() {
+            currentSessionId = null;
+            document.getElementById('chatMessages').innerHTML = `
+                <div class="welcome-message">
+                    <h3>New Conversation Started! 👋</h3>
+                    <p>What would you like to talk about?</p>
+                </div>
+            `;
+            updateURL();
+            // Don't close sidebar when starting new session
+        }
+
+        function updateURL() {
+            const url = new URL(window.location);
+            if (currentSessionId && currentSessionId !== 'guest') {
+                url.searchParams.set('session', currentSessionId);
+            } else {
+                url.searchParams.delete('session');
+            }
+            window.history.pushState({}, '', url);
+        }
+
+        function updatePagination(hasNext, hasPrevious) {
+            document.getElementById('prevPage').disabled = !hasPrevious;
+            document.getElementById('nextPage').disabled = !hasNext;
+            document.getElementById('pageInfo').textContent = `Page ${currentPage}`;
+        }
+
+        function changePage(page) {
+            if (page < 1) return;
+            loadSessions(page);
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>

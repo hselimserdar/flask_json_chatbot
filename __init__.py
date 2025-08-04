@@ -1,7 +1,8 @@
 #init.py
-from flask import Flask, request
-from chatbot_manage import chat_with_gemini, create_session_for_user, get_messages_for_session, is_session_owner, print_sessions
+from flask import Flask, request, render_template
+from chatbot_manage import chat_with_gemini, create_session_for_user, is_session_owner
 from user_process import compare_passwords, get_current_user, search_for_existing_user, add_new_user
+from db_utilities import print_sessions, get_messages_for_session
 from dotenv import load_dotenv
 import os
 import jwt
@@ -25,7 +26,7 @@ if debugging:
 def home():
     if debugging:
         print("Landing page accessed")
-    return {"message": "Welcome to the Landing Page!"}
+    return render_template('index.html')
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -198,6 +199,22 @@ def chatbot():
                     print("Failed to get a reply from Gemini API for session:", session_id)
                 return {"message": "Failed to get a reply from the API."}, 500
             return reply
+
+@app.route('/login')
+def login_page():
+    return render_template('login.html')
+
+@app.route('/register')
+def register_page():
+    return render_template('register.html')
+
+@app.route('/chatbot.html')
+def chatbot_page():
+    return render_template('chatbot.html')
+
+@app.route('/guest-chat')
+def guest_chat_page():
+    return render_template('guest-chat.html')
 
 if __name__ == '__main__':
     app.run(debug=flaskDebugging)
