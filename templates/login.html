@@ -11,7 +11,9 @@
     <div class="container">
         <div class="auth-form">
             <div class="auth-logo-container">
-                <img src="{{ url_for('static', filename='icons/100px-logo.png') }}" alt="HSS GPT Logo" class="auth-logo">
+                <a href="{{ url_for('index') }}" class="logo-link">
+                    <img src="{{ url_for('static', filename='icons/100px-logo.png') }}" alt="HSS GPT Logo" class="auth-logo">
+                </a>
             </div>
             <h2>Welcome Back</h2>
             <p class="auth-subtitle">Sign in to continue your conversations with HSS GPT</p>
@@ -82,21 +84,28 @@
                 if (response.ok) {
                     if (data.token) {
                         localStorage.setItem('token', data.token);
-                        messageDiv.innerHTML = '<div class="success">Login successful! Redirecting...</div>';
+                        messageDiv.innerHTML = '<div class="success">Welcome back! Taking you to your dashboard...</div>';
                         setTimeout(() => {
                             window.location.href = '/chatbot.html';
-                        }, 1000);
+                        }, 1500);
                     } else if (data.message === 'redirecting') {
-                        messageDiv.innerHTML = '<div class="info">Already logged in! Redirecting...</div>';
+                        messageDiv.innerHTML = '<div class="info">You\'re already logged in! Redirecting...</div>';
                         setTimeout(() => {
                             window.location.href = '/chatbot.html';
                         }, 1000);
                     }
                 } else {
-                    messageDiv.innerHTML = `<div class="error">${data.message}</div>`;
+                    // Improve error messages
+                    let errorMessage = data.message;
+                    if (errorMessage === "User not found!") {
+                        errorMessage = "Account not found. Please check your username or register.";
+                    } else if (errorMessage === "Incorrect password!") {
+                        errorMessage = "Invalid credentials. Please check your password.";
+                    }
+                    messageDiv.innerHTML = `<div class="error">${errorMessage}</div>`;
                 }
             } catch (error) {
-                messageDiv.innerHTML = '<div class="error">An error occurred. Please try again.</div>';
+                messageDiv.innerHTML = '<div class="error">Connection failed. Please check your internet and try again.</div>';
                 console.error('Login error:', error);
             }
         });

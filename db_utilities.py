@@ -8,6 +8,44 @@ load_dotenv()
 
 debugging = os.getenv("debugging", "false").lower() == "true"
 
+def is_session_owner(username, session_id):
+    conn = sqlite3.connect('database.sqlite')
+    conn.execute('PRAGMA foreign_keys = ON;')
+    cur = conn.cursor()
+    try:
+        cur.execute("SELECT id FROM user WHERE username = ?", (username,))
+        user_row = cur.fetchone()
+        if not user_row:
+            return False
+        user_id = user_row[0]
+
+        cur.execute(
+            "SELECT user_id, isDeleted FROM session WHERE id = ?",
+            (session_id,)
+        )
+        sess_row = cur.fetchone()
+        if not sess_row:
+            return False
+
+        owner_id, is_deleted = sess_row
+        if is_deleted:
+            if debugging:
+                print(f"is_session_owner: session {session_id} is marked deleted")
+            return False
+
+        is_owner = (owner_id == user_id)
+        if debugging:
+            print(f"is_session_owner({username}, {session_id}) -> {is_owner}")
+        return is_owner
+
+    except sqlite3.Error as e:
+        if debugging:
+            print("SQLite error in is_session_owner:", e)
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
 def get_created_at_for_session(session_id):
     conn = sqlite3.connect('database.sqlite')
     conn.execute('PRAGMA foreign_keys = ON;')
@@ -40,8 +78,8 @@ def get_created_at_for_session(session_id):
 def print_sessions(username, page):
     if page is None or page < 1:
         page = 1
-    pagination_count = 9
-    offset = (page - 1) * pagination_count
+    per_page = 9
+    offset = (page - 1) * per_page
 
     conn = sqlite3.connect('database.sqlite')
     conn.execute('PRAGMA foreign_keys = ON;')
@@ -54,11 +92,8 @@ def print_sessions(username, page):
 
         if user_id is None:
             result = {
-                "user": {"id": None, "username": username},
+                "meta": {"id": None, "username": username, "page": page, "per_page": per_page, "total_sessions": 0},
                 "sessions": [],
-                "page": page,
-                "per_page": pagination_count,
-                "total_sessions": 0,
                 "has_previous": False,
                 "has_next": False,
             }
@@ -66,24 +101,40 @@ def print_sessions(username, page):
                 print(f"print_sessions({username}) ->", result)
             return result
 
-        cur.execute("SELECT COUNT(*) FROM session WHERE user_id = ?", (user_id,))
+        cur.execute(
+            "SELECT COUNT(*) FROM session WHERE user_id = ? AND isDeleted = FALSE",
+            (user_id,)
+        )
         total_sessions = cur.fetchone()[0]
 
         cur.execute(
-            "SELECT id, title FROM session WHERE user_id = ? ORDER BY id DESC LIMIT ? OFFSET ?",
-            (user_id, pagination_count, offset),
+            "SELECT id, title FROM session "
+            "WHERE user_id = ? AND isDeleted = FALSE "
+            "ORDER BY id DESC LIMIT ? OFFSET ?",
+            (user_id, per_page, offset)
         )
         session_rows = cur.fetchall()
+
         sessions = []
         for sid, title in session_rows:
-            sessions.append({"id": sid, "user_id": user_id, "title": title, "created_at": get_created_at_for_session(sid)})
+            sessions.append({
+                "id": sid,
+                "user_id": user_id,
+                "title": title,
+                "created_at": get_created_at_for_session(sid)
+            })
 
-        # Calculate pagination flags
         has_previous = page > 1
-        has_next = (offset + pagination_count) < total_sessions
+        has_next = (offset + per_page) < total_sessions
 
         result = {
-            "meta": {"id": user_id, "username": username, "page": page, "per_page": pagination_count, "total_sessions": total_sessions},
+            "meta": {
+                "id": user_id,
+                "username": username,
+                "page": page,
+                "per_page": per_page,
+                "total_sessions": total_sessions
+            },
             "sessions": sessions,
             "has_previous": has_previous,
             "has_next": has_next,
@@ -97,11 +148,8 @@ def print_sessions(username, page):
         if debugging:
             print("SQLite error in print_sessions:", e)
         return {
-            "user": {"id": user_id if 'user_id' in locals() else None, "username": username},
+            "meta": {"id": user_id if 'user_id' in locals() else None, "username": username, "page": page, "per_page": per_page, "total_sessions": 0},
             "sessions": [],
-            "page": page,
-            "per_page": pagination_count,
-            "total_sessions": 0,
             "has_previous": False,
             "has_next": False,
         }
@@ -109,6 +157,7 @@ def print_sessions(username, page):
     finally:
         cur.close()
         conn.close()
+
 
 def get_user_id(username):
     conn = sqlite3.connect('database.sqlite')
@@ -222,6 +271,10 @@ def delete_session_for_user(username, session_id):
     conn.execute('PRAGMA foreign_keys = ON;')
     cur = conn.cursor()
     try:
+        if is_session_owner(username, session_id) is False:
+            if debugging:
+                print(f"delete_session_for_user: user '{username}' does not own session {session_id}")
+            return False
         cur.execute("SELECT id FROM user WHERE username = ?", (username,))
         row = cur.fetchone()
         if not row:
@@ -231,18 +284,26 @@ def delete_session_for_user(username, session_id):
         user_id = row[0]
 
         cur.execute(
-            "DELETE FROM session WHERE id = ? AND user_id = ?",
+            "UPDATE session "
+            "SET isDeleted = TRUE "
+            "WHERE id = ? AND user_id = ?",
             (session_id, user_id)
         )
         conn.commit()
 
         if cur.rowcount != 1:
             if debugging:
-                print(f"delete_session_for_user: no session deleted (session_id={session_id}, user_id={user_id})")
+                print(
+                    f"delete_session_for_user: no session marked deleted "
+                    f"(session_id={session_id}, user_id={user_id})"
+                )
             return False
 
         if debugging:
-            print(f"delete_session_for_user: deleted session_id={session_id} for user_id={user_id}")
+            print(
+                f"delete_session_for_user: marked session_id={session_id} "
+                f"as deleted for user_id={user_id}"
+            )
         return True
 
     except sqlite3.Error as e:
@@ -250,6 +311,27 @@ def delete_session_for_user(username, session_id):
             print("SQLite error in delete_session_for_user:", e)
         return False
 
+    finally:
+        cur.close()
+        conn.close()
+
+def remove_invalid_sessions():
+    conn = sqlite3.connect('database.sqlite')
+    conn.execute('PRAGMA foreign_keys = ON;')
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "DELETE FROM session WHERE isDeleted = TRUE"
+        )
+        removed_count = cur.rowcount
+        conn.commit()
+        if debugging:
+            print(f"remove_invalid_sessions: permanently deleted {removed_count} sessions")
+        return removed_count
+    except sqlite3.Error as e:
+        if debugging:
+            print("SQLite error in remove_invalid_sessions:", e)
+        return 0
     finally:
         cur.close()
         conn.close()

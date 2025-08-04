@@ -11,7 +11,9 @@
     <div class="container">
         <div class="auth-form">
             <div class="auth-logo-container">
-                <img src="{{ url_for('static', filename='icons/100px-logo.png') }}" alt="HSS GPT Logo" class="auth-logo">
+                <a href="{{ url_for('index') }}" class="logo-link">
+                    <img src="{{ url_for('static', filename='icons/100px-logo.png') }}" alt="HSS GPT Logo" class="auth-logo">
+                </a>
             </div>
             <h2>Create Account</h2>
             <p class="auth-subtitle">Join HSS GPT to start your AI conversations</p>
@@ -76,19 +78,19 @@
             const confirmPassword = document.getElementById('confirmPassword').value;
             const messageDiv = document.getElementById('message');
             
-            // Client-side validation
+            // Client-side validation with improved messages
             if (password !== confirmPassword) {
-                messageDiv.innerHTML = '<div class="error">Passwords do not match!</div>';
+                messageDiv.innerHTML = '<div class="error">Password confirmation doesn\'t match. Please try again.</div>';
                 return;
             }
             
             if (username.length < 3) {
-                messageDiv.innerHTML = '<div class="error">Username must be at least 3 characters long!</div>';
+                messageDiv.innerHTML = '<div class="error">Username too short. Please use at least 3 characters.</div>';
                 return;
             }
             
             if (password.length < 6) {
-                messageDiv.innerHTML = '<div class="error">Password must be at least 6 characters long!</div>';
+                messageDiv.innerHTML = '<div class="error">Password too weak. Please use at least 6 characters.</div>';
                 return;
             }
             
@@ -106,21 +108,28 @@
                 if (response.ok) {
                     if (data.token) {
                         localStorage.setItem('token', data.token);
-                        messageDiv.innerHTML = '<div class="success">Registration successful! Redirecting...</div>';
+                        messageDiv.innerHTML = '<div class="success">Account created successfully! Welcome aboard...</div>';
                         setTimeout(() => {
                             window.location.href = '/chatbot.html';
-                        }, 1000);
+                        }, 1500);
                     } else if (data.message === 'redirecting') {
-                        messageDiv.innerHTML = '<div class="info">Already logged in! Redirecting...</div>';
+                        messageDiv.innerHTML = '<div class="info">You\'re already logged in! Redirecting...</div>';
                         setTimeout(() => {
                             window.location.href = '/chatbot.html';
                         }, 1000);
                     }
                 } else {
-                    messageDiv.innerHTML = `<div class="error">${data.message}</div>`;
+                    // Improve server error messages
+                    let errorMessage = data.message;
+                    if (errorMessage === "User already exists!") {
+                        errorMessage = "Username taken. Please choose a different username.";
+                    } else if (errorMessage === "Registration failed!") {
+                        errorMessage = "Registration failed. Please try again later.";
+                    }
+                    messageDiv.innerHTML = `<div class="error">${errorMessage}</div>`;
                 }
             } catch (error) {
-                messageDiv.innerHTML = '<div class="error">An error occurred. Please try again.</div>';
+                messageDiv.innerHTML = '<div class="error">Connection failed. Please check your internet and try again.</div>';
                 console.error('Registration error:', error);
             }
         });

@@ -173,14 +173,13 @@ def create_session_for_user(username, title=None):
         user_id = row[0]
 
         cur.execute(
-            "INSERT INTO session (user_id, title) VALUES (?, ?)",
+            "INSERT INTO session (user_id, title, isDeleted) VALUES (?, ?, FALSE)",
             (user_id, title)
         )
         conn.commit()
-
         session_id = cur.lastrowid
         if debugging:
-            print(f"Created session id={session_id} for username='{username}' (user_id={user_id})")
+            print(f"Created session id={session_id} for username='{username}' (user_id={user_id}) with isDeleted=FALSE")
         return session_id
 
     except sqlite3.Error as e:
@@ -216,27 +215,6 @@ def add_message_to_session(session_id, sender, content, summary):
         if debugging:
             print("SQLite error in add_message_to_session:", e)
         return None
-    finally:
-        cur.close()
-        conn.close()
-
-def is_session_owner(username, session_id):
-    conn = sqlite3.connect('database.sqlite')
-    conn.execute('PRAGMA foreign_keys = ON;')
-    cur = conn.cursor()
-    try:
-        cur.execute("SELECT id FROM user WHERE username = ?", (username,))
-        user_row = cur.fetchone()
-        if not user_row:
-            return False
-        user_id = user_row[0]
-
-        cur.execute("SELECT user_id FROM session WHERE id = ?", (session_id,))
-        sess_row = cur.fetchone()
-        return bool(sess_row and sess_row[0] == user_id)
-    except sqlite3.Error as e:
-        if debugging:
-            print("SQLite error in is_session_owner:", e)
     finally:
         cur.close()
         conn.close()
