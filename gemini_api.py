@@ -9,7 +9,7 @@ load_dotenv()
 
 def call_gemini_api(
     messages: List[Dict[str, str]],
-    model: str = "gemini-2.0-flash-lite",
+    model: str = "gemini-2.5-pro",
     temperature: float = 0.3,
     candidate_count: int = 1
 ) -> str:

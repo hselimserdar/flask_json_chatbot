@@ -15,7 +15,7 @@ debugging = os.getenv("debugging", "false").lower() == "true"
 flaskDebugging = os.getenv("flaskDebugging", "false").lower() == "true"
 
 app = Flask(__name__)
-
+flaskIP, flaskPort = os.getenv("flaskIP", "127.0.0.1"), int(os.getenv("flaskPort", 5000))
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'dev-secret-change-me')
 
 if debugging:
@@ -279,4 +279,4 @@ def chatbot_page():
     return render_template('chatbot.html')
 
 if __name__ == '__main__':
-    app.run(debug=flaskDebugging)
+    app.run(host=flaskIP, port=flaskPort, debug=flaskDebugging)
