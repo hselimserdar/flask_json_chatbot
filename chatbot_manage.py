@@ -20,7 +20,7 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                 {"author": "user", "content": "You are a helpful assistant. Please respond to this message: " + message}
             ]
             try:
-                reply = call_gemini_api(first_prompt)
+                reply = call_gemini_api(first_prompt, use_tools=True)
 
                 summary_prompt = [
                     {"author": "user", "content": f"User asked: {message}"},
@@ -29,9 +29,10 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                                                   "Do not skip important details while keeping it concise. "
                                                   "Especially technical details, if they exist. "
                                                   "Also note the preferred language if mentioned. "
+                                                  "Keep the last code if you answered with code to make adjustments on the next message. "
                                                   "I will use this as context for the next message."}
                 ]
-                summary = call_gemini_api(summary_prompt)
+                summary = call_gemini_api(summary_prompt, use_tools=False)  # Summary doesn't need tools
             except Exception as e:
                 if debugging:
                     print("Error while calling Gemini API:", e)
@@ -45,7 +46,7 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                                               f"Answer in the same language as the user's message."}
             ]
             try:
-                title_candidate = call_gemini_api(title_prompt)
+                title_candidate = call_gemini_api(title_prompt, use_tools=False)  # Title generation doesn't need tools
             except Exception as e:
                 if debugging:
                     print("Error while calling Gemini API for title:", e)
@@ -84,17 +85,20 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
             ]
 
             try:
-                reply = call_gemini_api(prompt)
+                reply = call_gemini_api(prompt, use_tools=True)  # Main conversation needs tools
                 
                 summary_prompt = [
                     {"author": "user", "content": f"Previous context: {session_summary}\n"
                                                   f"User just said: {message}\n"
-                                                  f"I responded: {reply}\n\n"
-                                                  f"Give me an updated summary of this entire conversation. "
-                                                  f"Include important details and technical information. "
-                                                  f"Note the preferred language if mentioned."}
+                                                  f"I responded: {reply}\n\n"},
+                    {"author": "user", "content": "Give me a summary of this conversation so far. "
+                                                  "Do not skip important details while keeping it concise. "
+                                                  "Especially technical details, if they exist. "
+                                                  "Also note the preferred language if mentioned. "
+                                                  "Keep the last code if you answered with code to make adjustments on the next message. "
+                                                  "I will use this as context for the next message."}
                 ]
-                summary = call_gemini_api(summary_prompt)
+                summary = call_gemini_api(summary_prompt, use_tools=False)  # Summary doesn't need tools
             except Exception as e:
                 if debugging:
                     print("Error while calling Gemini API:", e)
@@ -107,7 +111,7 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                                                   f"Just return the title without quotes or extra text."}
                 ]
                 try:
-                    title_candidate = call_gemini_api(title_prompt)
+                    title_candidate = call_gemini_api(title_prompt, use_tools=False)  # Title generation doesn't need tools
                     session_title = (title_candidate or "New Conversation").strip().strip('"').strip('*')
                     update_session_title(session_id, session_title)
                 except Exception as e:
@@ -129,7 +133,7 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
     else:
         try:
             prompt = [{"author": "user", "content": message}]
-            reply = call_gemini_api(prompt)
+            reply = call_gemini_api(prompt, use_tools=True)  # Guest chat also gets tools
             return {
                 "session_id": "None",
                 "user_id": "guest",
