@@ -122,7 +122,8 @@
             }
 
             // Add user message to chat
-            addMessageToChat('user', message);
+            const userMessageDiv = addMessageToChat('user', message);
+
             messageInput.value = '';
             adjustTextareaHeight();
 
@@ -162,11 +163,19 @@
                         addMessageToChat('bot', 'I received your message but had trouble responding.');
                     }
                 } else {
-                    showErrorMessage(data.message || 'An error occurred');
+                    // Check for 500 errors - add action buttons to user message
+                    if (response.status === 500) {
+                        addActionButtonsToMessage(userMessageDiv, message);
+                        showErrorMessage(data.message || 'Server error occurred. You can try again, edit, or delete this message.', true);
+                    } else {
+                        showErrorMessage(data.message || 'An error occurred');
+                    }
                 }
             } catch (error) {
                 hideTypingIndicator();
-                showErrorMessage('Failed to send message. Please try again.');
+                // Network or other errors - add action buttons
+                addActionButtonsToMessage(userMessageDiv, message);
+                showErrorMessage('Failed to send message. Please try again.', true);
                 console.error('Send message error:', error);
             } finally {
                 // Unblock input after response (success or error)
@@ -174,7 +183,7 @@
             }
         }
 
-        function addMessageToChat(sender, message, timestamp = null) {
+        function addMessageToChat(sender, message, timestamp = null, showActions = false) {
             const chatMessages = document.getElementById('chatMessages');
 
             // Remove welcome message if it exists
@@ -207,11 +216,25 @@
             messageDiv.appendChild(messageContent);
             messageDiv.appendChild(timestampDiv);
 
+            // Add action buttons for user messages that failed to send
+            if (showActions && sender === 'user') {
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'message-actions';
+                actionsDiv.innerHTML = `
+                    <button class="action-btn delete-btn" onclick="deleteMessage(this)" title="Delete message">🗑️</button>
+                    <button class="action-btn retry-btn" onclick="retryMessage(this)" title="Try again">🔄</button>
+                    <button class="action-btn edit-btn" onclick="editMessage(this)" title="Edit message">✏️</button>
+                `;
+                messageDiv.appendChild(actionsDiv);
+                messageDiv.dataset.originalMessage = message;
+            }
+
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
             const newBlocks = messageDiv.querySelectorAll("pre code");
             newBlocks.forEach(block => hljs.highlightElement(block));
 
+            return messageDiv;
         }
 
         function showTypingIndicator() {
@@ -237,7 +260,7 @@
             textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
         }
 
-        function showErrorMessage(message) {
+        function showErrorMessage(message, hasActionButtons = false) {
             // Check if this is an authentication/authorization error that should redirect to login
             if (shouldRedirectToLogin(message)) {
                 window.location.href = '/login';
@@ -245,7 +268,8 @@
             }
 
             // Check if this is an API failure that should refresh the page
-            if (shouldRefreshPage(message)) {
+            // BUT only if we don't have action buttons available for the user
+            if (!hasActionButtons && shouldRefreshPage(message)) {
                 setTimeout(() => {
                     window.location.reload();
                 }, 2000); // Give user 2 seconds to see the error message
@@ -273,7 +297,7 @@
             chatContainer.insertBefore(errorDiv, chatContainer.firstChild);
 
             // Auto-hide after 5 seconds (unless page is refreshing)
-            if (!shouldRefreshPage(message)) {
+            if (!(!hasActionButtons && shouldRefreshPage(message))) {
                 setTimeout(() => {
                     if (errorDiv.parentNode) {
                         errorDiv.remove();
@@ -386,6 +410,58 @@
         function checkIfWaitingForResponse() {
             if (isWaitingForResponse()) {
                 setWaitingForResponse(true);
+            }
+        }
+
+        // Action buttons functionality
+        function addActionButtonsToMessage(messageDiv, originalMessage) {
+            // Check if actions already exist
+            if (messageDiv.querySelector('.message-actions')) {
+                return;
+            }
+
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'message-actions';
+            actionsDiv.innerHTML = `
+                <button class="action-btn delete-btn" onclick="deleteMessage(this)" title="Delete message">🗑️</button>
+                <button class="action-btn retry-btn" onclick="retryMessage(this)" title="Try again">🔄</button>
+                <button class="action-btn edit-btn" onclick="editMessage(this)" title="Edit message">✏️</button>
+            `;
+            messageDiv.appendChild(actionsDiv);
+            messageDiv.dataset.originalMessage = originalMessage;
+        }
+
+        function deleteMessage(button) {
+            const messageDiv = button.closest('.message');
+            if (messageDiv && confirm('Are you sure you want to delete this message?')) {
+                messageDiv.remove();
+            }
+        }
+
+        function retryMessage(button) {
+            const messageDiv = button.closest('.message');
+            if (messageDiv) {
+                const originalMessage = messageDiv.dataset.originalMessage || messageDiv.querySelector('.message-content').textContent;
+                // Remove the failed message
+                messageDiv.remove();
+                // Send the message again
+                document.getElementById('messageInput').value = originalMessage;
+                sendMessage();
+            }
+        }
+
+        function editMessage(button) {
+            const messageDiv = button.closest('.message');
+            if (messageDiv) {
+                const originalMessage = messageDiv.dataset.originalMessage || messageDiv.querySelector('.message-content').textContent;
+                // Remove the failed message
+                messageDiv.remove();
+                // Put the message back in the input for editing
+                document.getElementById('messageInput').value = originalMessage;
+                document.getElementById('messageInput').focus();
+                adjustTextareaHeight();
+                // Unblock input in case it was blocked
+                setWaitingForResponse(false);
             }
         }
     </script>

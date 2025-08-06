@@ -114,14 +114,287 @@
 
         async function verifyToken() {
             const token = localStorage.getItem('token');
-            try {
-                // You might want to add a verification endpoint
-                document.getElementById('userInfo').textContent = 'Authenticated User';
-            } catch (error) {
-                console.error('Token verification failed:', error);
+            if (!token) {
+                console.error('No token found in localStorage');
                 localStorage.removeItem('token');
                 window.location.href = '/login';
+                return;
             }
+            
+            try {
+                const response = await fetch('/verify-token', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.valid) {
+                    // Token is valid, update user info with username
+                    const userInfoElement = document.getElementById('userInfo');
+                    userInfoElement.textContent = `Welcome, ${data.username}`;
+                    userInfoElement.title = `Token expires in ${data.time_remaining_minutes} minutes (${data.remaining_percentage}% remaining)`;
+                    
+                    console.log('Token verification successful:', {
+                        username: data.username,
+                        expires_at: data.expires_at,
+                        time_remaining_minutes: data.time_remaining_minutes,
+                        remaining_percentage: data.remaining_percentage,
+                        needs_refresh: data.needs_refresh
+                    });
+                    
+                    // Check if token needs refresh (less than 20% lifetime remaining)
+                    if (data.needs_refresh) {
+                        console.log(`Token has ${data.remaining_percentage}% remaining, refreshing automatically...`);
+                        await automaticTokenRefresh();
+                    } else {
+                        // Set up token expiration warning
+                        setupTokenExpirationWarning(data.time_remaining_seconds);
+                    }
+                    
+                } else {
+                    // Token is invalid or expired
+                    console.error('Token verification failed:', data.message);
+                    
+                    // Show error message to user
+                    if (data.message === 'Token expired') {
+                        showErrorMessage('Your session has expired. Please log in again.');
+                    } else {
+                        showErrorMessage('Authentication failed. Please log in again.');
+                    }
+                    
+                    // Clear invalid token and redirect
+                    localStorage.removeItem('token');
+                    setTimeout(() => {
+                        window.location.href = '/login';
+                    }, 2000);
+                }
+            } catch (error) {
+                console.error('Token verification request failed:', error);
+                
+                // Network error - could be temporary, show warning but don't immediately redirect
+                showErrorMessage('Unable to verify authentication. Please check your connection.');
+                
+                // Still set a fallback display name
+                document.getElementById('userInfo').textContent = 'Authenticated User (Unverified)';
+                
+                // Set up retry mechanism
+                setTimeout(() => {
+                    verifyToken(); // Retry verification after 30 seconds
+                }, 30000);
+            }
+        }
+
+        async function automaticTokenRefresh() {
+            try {
+                const currentToken = localStorage.getItem('token');
+                const response = await fetch('/refresh-token', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.token) {
+                    // Update token in localStorage
+                    localStorage.setItem('token', data.token);
+                    
+                    console.log('Token refreshed automatically:', {
+                        username: data.username,
+                        expires_at: data.expires_at,
+                        message: data.message
+                    });
+                    
+                    // Show success notification
+                    showTokenRefreshNotification();
+                    
+                    // Re-verify with new token to get updated timing info
+                    setTimeout(() => {
+                        verifyToken();
+                    }, 1000);
+                    
+                } else {
+                    console.error('Automatic token refresh failed:', data.message);
+                    
+                    if (data.message.includes('expired too long ago')) {
+                        showErrorMessage('Session expired. Please log in again.');
+                        localStorage.removeItem('token');
+                        setTimeout(() => {
+                            window.location.href = '/login';
+                        }, 2000);
+                    } else {
+                        showErrorMessage('Unable to refresh session. Please log in again.');
+                        setTimeout(() => {
+                            localStorage.removeItem('token');
+                            window.location.href = '/login';
+                        }, 3000);
+                    }
+                }
+            } catch (error) {
+                console.error('Automatic token refresh error:', error);
+                showErrorMessage('Network error during session refresh. Please check your connection.');
+            }
+        }
+
+        function showTokenRefreshNotification() {
+            const notificationDiv = document.createElement('div');
+            notificationDiv.className = 'token-refresh-notification';
+            notificationDiv.innerHTML = `
+                <div class="refresh-content">
+                    <span class="refresh-icon">🔄</span>
+                    <span class="refresh-text">Session refreshed automatically</span>
+                    <button class="refresh-close" onclick="this.parentElement.parentElement.remove()">×</button>
+                </div>
+            `;
+
+            // Insert at the top of chat container
+            const chatContainer = document.querySelector('.chat-container');
+            chatContainer.insertBefore(notificationDiv, chatContainer.firstChild);
+
+            // Auto-hide after 3 seconds
+            setTimeout(() => {
+                if (notificationDiv.parentNode) {
+                    notificationDiv.remove();
+                }
+            }, 3000);
+        }
+
+        // Enhanced request wrapper that checks token status before every request
+        async function makeAuthenticatedRequest(url, options = {}) {
+            const token = localStorage.getItem('token');
+            if (!token) {
+                throw new Error('No authentication token available');
+            }
+
+            // Check token status before making the request
+            const tokenCheckResponse = await fetch('/verify-token', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+
+            if (tokenCheckResponse.ok) {
+                const tokenData = await tokenCheckResponse.json();
+                
+                // If token needs refresh, do it before the actual request
+                if (tokenData.needs_refresh) {
+                    console.log(`Token needs refresh before request to ${url}, refreshing...`);
+                    await automaticTokenRefresh();
+                }
+            }
+
+            // Make the actual request with current token
+            const currentToken = localStorage.getItem('token');
+            const requestOptions = {
+                ...options,
+                headers: {
+                    ...options.headers,
+                    'Authorization': `Bearer ${currentToken}`,
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            return fetch(url, requestOptions);
+        }
+
+        function setupTokenExpirationWarning(timeRemainingSeconds) {
+            // Clear any existing warning timers
+            if (window.tokenWarningTimer) {
+                clearTimeout(window.tokenWarningTimer);
+            }
+            if (window.tokenExpirationTimer) {
+                clearTimeout(window.tokenExpirationTimer);
+            }
+            
+            // Show warning 5 minutes before expiration
+            const warningTime = Math.max(0, (timeRemainingSeconds - 300) * 1000); // 5 minutes = 300 seconds
+            
+            if (warningTime > 0) {
+                window.tokenWarningTimer = setTimeout(() => {
+                    showTokenExpirationWarning();
+                }, warningTime);
+            } else if (timeRemainingSeconds > 60) {
+                // If less than 5 minutes remaining, show warning immediately
+                showTokenExpirationWarning();
+            }
+            
+            // Auto-logout when token expires
+            window.tokenExpirationTimer = setTimeout(() => {
+                showErrorMessage('Your session has expired. Redirecting to login...');
+                localStorage.removeItem('token');
+                setTimeout(() => {
+                    window.location.href = '/login';
+                }, 2000);
+            }, timeRemainingSeconds * 1000);
+        }
+
+        function showTokenExpirationWarning() {
+            const warningDiv = document.createElement('div');
+            warningDiv.className = 'token-warning-notification';
+            warningDiv.innerHTML = `
+                <div class="warning-content">
+                    <span class="warning-icon">⏰</span>
+                    <span class="warning-text">Your session will expire soon. Save your work!</span>
+                    <button class="warning-refresh" onclick="refreshToken()">Extend Session</button>
+                    <button class="warning-close" onclick="this.parentElement.parentElement.remove()">×</button>
+                </div>
+            `;
+
+            // Insert at the top of chat container
+            const chatContainer = document.querySelector('.chat-container');
+            chatContainer.insertBefore(warningDiv, chatContainer.firstChild);
+
+            // Auto-hide after 10 seconds
+            setTimeout(() => {
+                if (warningDiv.parentNode) {
+                    warningDiv.remove();
+                }
+            }, 10000);
+        }
+
+        async function refreshToken() {
+            try {
+                // Call the login endpoint to get a new token (simulating token refresh)
+                const currentToken = localStorage.getItem('token');
+                const response = await fetch('/verify-token', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${currentToken}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data.valid && data.time_remaining_minutes > 5) {
+                        showErrorMessage('Session verified - you have time remaining!', false);
+                        setupTokenExpirationWarning(data.time_remaining_seconds);
+                    } else {
+                        showErrorMessage('Session is about to expire. Please save your work and log in again.');
+                    }
+                } else {
+                    showErrorMessage('Unable to refresh session. Please log in again.');
+                    setTimeout(() => {
+                        localStorage.removeItem('token');
+                        window.location.href = '/login';
+                    }, 3000);
+                }
+            } catch (error) {
+                console.error('Token refresh failed:', error);
+                showErrorMessage('Network error. Please check your connection.');
+            }
+
+            // Remove any warning notifications
+            const warnings = document.querySelectorAll('.token-warning-notification');
+            warnings.forEach(warning => warning.remove());
         }
 
         function setupEventListeners() {
@@ -176,7 +449,8 @@
             }
 
             // Add user message to chat
-            addMessageToChat('user', message);
+            const userMessageDiv = addMessageToChat('user', message);
+
             messageInput.value = '';
             adjustTextareaHeight();
 
@@ -188,14 +462,24 @@
 
             try {
                 const url = currentSessionId ? `/chatbot?session=${currentSessionId}` : '/chatbot';
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        ...(isGuest ? {} : { 'Authorization': `Bearer ${localStorage.getItem('token')}` })
-                    },
-                    body: JSON.stringify({ message })
-                });
+                let response;
+                
+                if (isGuest) {
+                    // Guest users don't need token refresh
+                    response = await fetch(url, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ message })
+                    });
+                } else {
+                    // Authenticated users use the enhanced request wrapper
+                    response = await makeAuthenticatedRequest(url, {
+                        method: 'POST',
+                        body: JSON.stringify({ message })
+                    });
+                }
 
                 const data = await response.json();
                 hideTypingIndicator();
@@ -239,11 +523,20 @@
                             return;
                         }
                     }
-                    showErrorMessage(data.message || 'An error occurred');
+                    
+                    // Check for 500 errors - add action buttons to user message
+                    if (response.status === 500) {
+                        addActionButtonsToMessage(userMessageDiv, message);
+                        showErrorMessage(data.message || 'Server error occurred. You can try again, edit, or delete this message.', true);
+                    } else {
+                        showErrorMessage(data.message || 'An error occurred');
+                    }
                 }
             } catch (error) {
                 hideTypingIndicator();
-                showErrorMessage('Failed to send message. Please try again.');
+                // Network or other errors - add action buttons
+                addActionButtonsToMessage(userMessageDiv, message);
+                showErrorMessage('Failed to send message. Please try again.', true);
                 console.error('Send message error:', error);
             } finally {
                 // Unblock input after response (success or error)
@@ -251,7 +544,7 @@
             }
         }
 
-        function addMessageToChat(sender, message, timestamp = null) {
+        function addMessageToChat(sender, message, timestamp = null, showActions = false) {
             const chatMessages = document.getElementById('chatMessages');
 
             // Remove welcome message if it exists
@@ -284,14 +577,28 @@
             messageDiv.appendChild(messageContent);
             messageDiv.appendChild(timestampDiv);
 
+            // Add action buttons for user messages that failed to send
+            if (showActions && sender === 'user') {
+                const actionsDiv = document.createElement('div');
+                actionsDiv.className = 'message-actions';
+                actionsDiv.innerHTML = `
+                    <button class="action-btn delete-btn" onclick="deleteMessage(this)" title="Delete message">🗑️</button>
+                    <button class="action-btn retry-btn" onclick="retryMessage(this, '${message.replace(/'/g, "\\'")}', '${messageDiv.dataset.originalMessage || message}')" title="Try again">🔄</button>
+                    <button class="action-btn edit-btn" onclick="editMessage(this, '${message.replace(/'/g, "\\'")}', '${messageDiv.dataset.originalMessage || message}')" title="Edit message">✏️</button>
+                `;
+                messageDiv.appendChild(actionsDiv);
+                messageDiv.dataset.originalMessage = message;
+            }
+
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
             const newBlocks = messageDiv.querySelectorAll("pre code");
             newBlocks.forEach(block => hljs.highlightElement(block));
 
+            return messageDiv;
         }
 
-        function showErrorMessage(message) {
+        function showErrorMessage(message, hasActionButtons = false) {
             // Check if this is an authentication/authorization error that should redirect to login
             if (shouldRedirectToLogin(message)) {
                 localStorage.removeItem('token'); // Clear any invalid token
@@ -300,7 +607,8 @@
             }
 
             // Check if this is an API failure that should refresh the page
-            if (shouldRefreshPage(message)) {
+            // BUT only if we don't have action buttons available for the user
+            if (!hasActionButtons && shouldRefreshPage(message)) {
                 setTimeout(() => {
                     window.location.reload();
                 }, 2000); // Give user 2 seconds to see the error message
@@ -328,7 +636,7 @@
             chatContainer.insertBefore(errorDiv, chatContainer.firstChild);
 
             // Auto-hide after 5 seconds (unless page is refreshing)
-            if (!shouldRefreshPage(message)) {
+            if (!(!hasActionButtons && shouldRefreshPage(message))) {
                 setTimeout(() => {
                     if (errorDiv.parentNode) {
                         errorDiv.remove();
@@ -387,10 +695,8 @@
             console.log(`Loading sessions for page: ${page}`);
 
             try {
-                const response = await fetch(`/chatbot/session?page=${page}`, {
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`
-                    }
+                const response = await makeAuthenticatedRequest(`/chatbot/session?page=${page}`, {
+                    method: 'GET'
                 });
 
                 const data = await response.json();
@@ -490,11 +796,8 @@
             }
             
             try {
-                const response = await fetch(`/chatbot/delete?session=${sessionId}`, {
-                    method: 'GET',
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`
-                    }
+                const response = await makeAuthenticatedRequest(`/chatbot/delete?session=${sessionId}`, {
+                    method: 'GET'
                 });
                 
                 const data = await response.json();
@@ -552,10 +855,8 @@
 
         async function loadSession(sessionId) {
             try {
-                const response = await fetch(`/chatbot/message?session=${sessionId}`, {
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('token')}`
-                    }
+                const response = await makeAuthenticatedRequest(`/chatbot/message?session=${sessionId}`, {
+                    method: 'GET'
                 });
 
                 const data = await response.json();
@@ -778,6 +1079,58 @@
         function checkIfWaitingForResponse() {
             if (isWaitingForResponse()) {
                 setWaitingForResponse(true);
+            }
+        }
+
+        // Action buttons functionality
+        function addActionButtonsToMessage(messageDiv, originalMessage) {
+            // Check if actions already exist
+            if (messageDiv.querySelector('.message-actions')) {
+                return;
+            }
+
+            const actionsDiv = document.createElement('div');
+            actionsDiv.className = 'message-actions';
+            actionsDiv.innerHTML = `
+                <button class="action-btn delete-btn" onclick="deleteMessage(this)" title="Delete message">🗑️</button>
+                <button class="action-btn retry-btn" onclick="retryMessage(this)" title="Try again">🔄</button>
+                <button class="action-btn edit-btn" onclick="editMessage(this)" title="Edit message">✏️</button>
+            `;
+            messageDiv.appendChild(actionsDiv);
+            messageDiv.dataset.originalMessage = originalMessage;
+        }
+
+        function deleteMessage(button) {
+            const messageDiv = button.closest('.message');
+            if (messageDiv && confirm('Are you sure you want to delete this message?')) {
+                messageDiv.remove();
+            }
+        }
+
+        function retryMessage(button) {
+            const messageDiv = button.closest('.message');
+            if (messageDiv) {
+                const originalMessage = messageDiv.dataset.originalMessage || messageDiv.querySelector('.message-content').textContent;
+                // Remove the failed message
+                messageDiv.remove();
+                // Send the message again
+                document.getElementById('messageInput').value = originalMessage;
+                sendMessage();
+            }
+        }
+
+        function editMessage(button) {
+            const messageDiv = button.closest('.message');
+            if (messageDiv) {
+                const originalMessage = messageDiv.dataset.originalMessage || messageDiv.querySelector('.message-content').textContent;
+                // Remove the failed message
+                messageDiv.remove();
+                // Put the message back in the input for editing
+                document.getElementById('messageInput').value = originalMessage;
+                document.getElementById('messageInput').focus();
+                adjustTextareaHeight();
+                // Unblock input in case it was blocked
+                setWaitingForResponse(false);
             }
         }
     </script>

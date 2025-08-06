@@ -58,10 +58,14 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
             if debugging:
                 print("Generated title:", generated_title)
 
-            user_msg_id = add_message_to_session(session_id, "user", message, "")
-            bot_msg_id = add_message_to_session(session_id, "bot", reply, summary)
-            update_session_title(session_id, generated_title)
-
+            if message and reply and summary and generated_title:
+                user_msg_id = add_message_to_session(session_id, "user", message, "")
+                bot_msg_id = add_message_to_session(session_id, "bot", reply, summary)
+                update_session_title(session_id, generated_title)
+            else:
+                if debugging:
+                    print("Missing one of the required fields for message/session creation")
+                return None
             return {
                 "session_id": session_id,
                 "user_id": user_id,
@@ -113,14 +117,22 @@ def chat_with_gemini(username, message, session_id=None, first_message=False):
                 try:
                     title_candidate = call_gemini_api(title_prompt, use_tools=False)  # Title generation doesn't need tools
                     session_title = (title_candidate or "New Conversation").strip().strip('"').strip('*')
-                    update_session_title(session_id, session_title)
+                    if session_title:
+                        update_session_title(session_id, session_title)
+                        if debugging:
+                            print("Updated session title to:", session_title)
                 except Exception as e:
                     if debugging:
                         print("Error while calling Gemini API for title:", e)
 
-            user_msg_id = add_message_to_session(session_id, "user", message, "")
-            bot_msg_id = add_message_to_session(session_id, "bot", reply, summary)
-
+            if message and reply and summary:
+                user_msg_id = add_message_to_session(session_id, "user", message, "")
+                bot_msg_id = add_message_to_session(session_id, "bot", reply, summary)
+            else:
+                if debugging:
+                    print("Missing one of the required fields for message/session creation")
+                return None
+            
             return {
                 "session_id": session_id,
                 "user_id": user_id,

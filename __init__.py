@@ -274,6 +274,158 @@ def guest_chat_page():
         return redirect('/chatbot.html')
     return render_template('guest-chat.html')
 
+@app.route('/verify-token', methods=['POST'])
+def verify_token():
+    """Verify JWT token and return user information"""
+    try:
+        # Get token from Authorization header
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            if debugging:
+                print("No valid Authorization header found")
+            return {"message": "No token provided"}, 401
+        
+        token = auth_header.split(' ')[1]
+        if debugging:
+            print(f"Verifying token: {token[:20]}...")
+        
+        # Decode the token
+        try:
+            payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'])
+            username = payload.get('sub')
+            issued_at = payload.get('iat')
+            expires_at = payload.get('exp')
+            
+            if debugging:
+                print(f"Token decoded successfully for user: {username}")
+                print(f"Token issued at: {datetime.datetime.fromtimestamp(issued_at)}")
+                print(f"Token expires at: {datetime.datetime.fromtimestamp(expires_at)}")
+            
+            # Check if user still exists in database
+            user_exists = search_for_existing_user(username)
+            if user_exists is None:
+                if debugging:
+                    print(f"User {username} no longer exists in database")
+                return {"message": "User not found"}, 404
+            
+            # Calculate time remaining and total lifetime
+            current_time = datetime.datetime.now(datetime.timezone.utc)
+            expires_datetime = datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc)
+            issued_datetime = datetime.datetime.fromtimestamp(issued_at, datetime.timezone.utc)
+            
+            time_remaining = expires_datetime - current_time
+            total_lifetime = expires_datetime - issued_datetime
+            
+            # Calculate percentage of lifetime remaining
+            remaining_percentage = (time_remaining.total_seconds() / total_lifetime.total_seconds()) * 100
+            
+            return {
+                "valid": True,
+                "username": username,
+                "issued_at": datetime.datetime.fromtimestamp(issued_at).isoformat(),
+                "expires_at": datetime.datetime.fromtimestamp(expires_at).isoformat(),
+                "time_remaining_seconds": int(time_remaining.total_seconds()),
+                "time_remaining_minutes": int(time_remaining.total_seconds() / 60),
+                "total_lifetime_seconds": int(total_lifetime.total_seconds()),
+                "remaining_percentage": round(remaining_percentage, 2),
+                "needs_refresh": remaining_percentage < 20
+            }
+            
+        except jwt.ExpiredSignatureError:
+            if debugging:
+                print("Token has expired")
+            return {"message": "Token expired"}, 401
+        except jwt.InvalidTokenError as e:
+            if debugging:
+                print(f"Invalid token error: {e}")
+            return {"message": "Invalid token"}, 401
+            
+    except Exception as e:
+        if debugging:
+            print(f"Token verification error: {e}")
+        return {"message": "Token verification failed"}, 500
+
+@app.route('/refresh-token', methods=['POST'])
+def refresh_token():
+    """Refresh JWT token if it's still valid but near expiration"""
+    try:
+        # Get token from Authorization header
+        auth_header = request.headers.get('Authorization')
+        if not auth_header or not auth_header.startswith('Bearer '):
+            if debugging:
+                print("No valid Authorization header found for token refresh")
+            return {"message": "No token provided"}, 401
+        
+        token = auth_header.split(' ')[1]
+        if debugging:
+            print(f"Refreshing token: {token[:20]}...")
+        
+        # Decode the token (even if expired, we'll check if it's within grace period)
+        try:
+            # First try normal decode
+            payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'])
+            username = payload.get('sub')
+            
+        except jwt.ExpiredSignatureError:
+            # If expired, try to decode without verification to check if it's within grace period
+            try:
+                payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'], options={"verify_exp": False})
+                username = payload.get('sub')
+                expires_at = payload.get('exp')
+                
+                # Allow refresh up to 5 minutes after expiration
+                current_time = datetime.datetime.now(datetime.timezone.utc)
+                expires_datetime = datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc)
+                time_since_expiry = current_time - expires_datetime
+                
+                if time_since_expiry.total_seconds() > 300:  # 5 minutes = 300 seconds
+                    if debugging:
+                        print(f"Token expired too long ago: {time_since_expiry}")
+                    return {"message": "Token expired too long ago, please log in again"}, 401
+                    
+                if debugging:
+                    print(f"Token expired {time_since_expiry.total_seconds()} seconds ago, allowing refresh")
+                    
+            except jwt.InvalidTokenError as e:
+                if debugging:
+                    print(f"Invalid token error during refresh: {e}")
+                return {"message": "Invalid token"}, 401
+                
+        except jwt.InvalidTokenError as e:
+            if debugging:
+                print(f"Invalid token error during refresh: {e}")
+            return {"message": "Invalid token"}, 401
+        
+        # Check if user still exists in database
+        user_exists = search_for_existing_user(username)
+        if user_exists is None:
+            if debugging:
+                print(f"User {username} no longer exists in database during refresh")
+            return {"message": "User not found"}, 404
+        
+        # Generate new token with fresh expiration
+        new_payload = {
+            'sub': username,
+            'iat': datetime.datetime.now(datetime.timezone.utc),
+            'exp': datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=1)
+        }
+        new_token = jwt.encode(new_payload, app.config['JWT_SECRET_KEY'], algorithm='HS256')
+        
+        if debugging:
+            print(f"Generated new token for {username}: {new_token[:20]}...")
+            
+        return {
+            "token": new_token,
+            "username": username,
+            "expires_at": new_payload['exp'].isoformat(),
+            "message": "Token refreshed successfully"
+        }
+        
+    except Exception as e:
+        if debugging:
+            print(f"Token refresh error: {e}")
+        return {"message": "Token refresh failed"}, 500
+
 @app.route('/chatbot.html')
 def chatbot_page():
     return render_template('chatbot.html')

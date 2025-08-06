@@ -19,10 +19,14 @@ def calculate_math(expression: str) -> Dict[str, Any]:
     """
     try:
         if debugging:
-            print(f"Calculating math expression: {expression}")
+            print(f"MATH TOOL DEBUG - Starting calculation")
+            print(f"   Original expression: '{expression}'")
         
         # Clean the expression
         expression = expression.strip()
+        
+        if debugging:
+            print(f"   Cleaned expression: '{expression}'")
         
         # Create a safe environment for evaluation
         safe_dict = {
@@ -46,15 +50,22 @@ def calculate_math(expression: str) -> Dict[str, Any]:
         }
         
         # Replace common math symbols with Python equivalents
+        original_expr = expression
         expression = expression.replace("^", "**")  # Power operator
         expression = expression.replace("×", "*")   # Multiplication
         expression = expression.replace("÷", "/")   # Division
         
+        if debugging and original_expr != expression:
+            print(f"   Symbol replacement: '{original_expr}' → '{expression}'")
+        
         # Evaluate the expression
+        if debugging:
+            print(f"   Evaluating with safe environment...")
+        
         result = eval(expression, safe_dict)
         
         if debugging:
-            print(f"Math calculation result: {result}")
+            print(f"    MATH SUCCESS: {expression} = {result} (type: {type(result).__name__})")
         
         return {
             "expression": expression,
@@ -64,24 +75,32 @@ def calculate_math(expression: str) -> Dict[str, Any]:
         }
         
     except ZeroDivisionError:
+        if debugging:
+            print(f"    MATH ERROR: Division by zero")
         return {
             "expression": expression,
             "error": "Division by zero",
             "success": False
         }
     except OverflowError:
+        if debugging:
+            print(f"    MATH ERROR: Result too large")
         return {
             "expression": expression,
             "error": "Result too large",
             "success": False
         }
     except (SyntaxError, NameError, TypeError) as e:
+        if debugging:
+            print(f"    MATH ERROR: Invalid expression - {str(e)}")
         return {
             "expression": expression,
             "error": f"Invalid expression: {str(e)}",
             "success": False
         }
     except Exception as e:
+        if debugging:
+            print(f"    MATH ERROR: Unexpected error - {str(e)}")
         return {
             "expression": expression,
             "error": f"Calculation error: {str(e)}",
@@ -90,101 +109,344 @@ def calculate_math(expression: str) -> Dict[str, Any]:
 
 def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
     """
-    Search the web using DuckDuckGo Instant Answer API
-    Falls back to a simple search results format
+    Search the web using multiple strategies for better results
     """
     try:
         if debugging:
-            print(f"Searching web for: {query}")
+            print(f"WEB SEARCH DEBUG - Starting search")
+            print(f"   Query: '{query}'")
+            print(f"   Max results: {num_results}")
         
         # Clean and validate inputs
+        original_query = query
         query = query.strip()
+        
+        # Remove unnecessary search modifiers that confuse APIs
+        search_prefixes = ["search", "find", "look for", "search for", "look up", "google"]
+        query_lower = query.lower()
+        
+        for prefix in search_prefixes:
+            patterns = [
+                f"{prefix} \"",  # search "something"
+                f"{prefix} '",   # search 'something'
+                f"{prefix} ",    # search something
+            ]
+            for pattern in patterns:
+                if query_lower.startswith(pattern):
+                    old_query = query
+                    if pattern.endswith('"') or pattern.endswith("'"):
+                        # Handle quoted search terms
+                        quote_char = pattern[-1]
+                        if query.endswith(quote_char):
+                            query = query[len(pattern):-1].strip()
+                        else:
+                            query = query[len(pattern):].strip()
+                    else:
+                        query = query[len(pattern):].strip()
+                    
+                    if debugging:
+                        print(f"   Removed search prefix: '{old_query}' → '{query}'")
+                    break
+        
+        # Remove web-related suffixes
+        web_suffixes = ["on the web", "in web", "on web", "online", "on internet"]
+        for suffix in web_suffixes:
+            if query_lower.endswith(suffix):
+                old_query = query
+                query = query[:-len(suffix)].strip()
+                if debugging:
+                    print(f"   Removed web suffix: '{old_query}' → '{query}'")
+                break
+        
+        # Remove quotes if they're just surrounding the entire query
+        if query.startswith('"') and query.endswith('"') and query.count('"') == 2:
+            old_query = query
+            query = query[1:-1].strip()
+            if debugging:
+                print(f"   Removed surrounding quotes: '{old_query}' → '{query}'")
+        
         num_results = max(1, min(num_results, 10))  # Limit between 1-10
         
         if not query:
+            if debugging:
+                print(f"    SEARCH ERROR: Empty query after cleaning")
             return {
-                "query": query,
-                "error": "Empty search query",
+                "query": original_query,
+                "error": "Empty search query after cleaning",
                 "success": False
             }
         
-        # Try DuckDuckGo Instant Answer API first
+        if debugging:
+            print(f"   Final cleaned query: '{query}'")
+        
+        # Strategy 1: Try DuckDuckGo Instant Answer API
         try:
+            if debugging:
+                print(f"   Strategy 1: DuckDuckGo Instant Answer API")
+            
             ddg_url = "https://api.duckduckgo.com/"
             params = {
                 "q": query,
                 "format": "json",
                 "no_html": "1",
-                "skip_disambig": "1"
+                "skip_disambig": "1",
+                "no_redirect": "1",
+                "safe_search": "moderate"
             }
             
-            response = requests.get(ddg_url, params=params, timeout=5)
+            if debugging:
+                print(f"   Making request to: {ddg_url}")
+                print(f"   Parameters: {params}")
+            
+            response = requests.get(ddg_url, params=params, timeout=8, 
+                                  headers={'User-Agent': 'Mozilla/5.0 (compatible; SearchBot/1.0)'})
+            
+            if debugging:
+                print(f"   Response status: {response.status_code}")
+                print(f"   Response length: {len(response.text)} characters")
+            
             response.raise_for_status()
-            data = response.json()
             
-            results = []
-            
-            # Check for instant answer
-            if data.get("AbstractText"):
-                results.append({
-                    "title": data.get("Heading", query),
-                    "snippet": data.get("AbstractText", ""),
-                    "url": data.get("AbstractURL", ""),
-                    "source": "DuckDuckGo Instant Answer"
-                })
-            
-            # Check for related topics
-            if data.get("RelatedTopics"):
-                for topic in data.get("RelatedTopics", [])[:num_results-len(results)]:
-                    if isinstance(topic, dict) and topic.get("Text"):
+            if response.text.strip():
+                try:
+                    data = response.json()
+                    if debugging:
+                        print(f"    JSON parsed successfully")
+                        print(f"   Response keys: {list(data.keys())}")
+                    
+                    # Check if this is a test response (avoid the "Just Another Test" issue)
+                    meta = data.get('meta', {})
+                    if (meta.get('name') == 'Just Another Test' or 
+                        meta.get('id') == 'just_another_test' or
+                        meta.get('production_state') == 'offline'):
+                        if debugging:
+                            print(f"    Detected test response, skipping DuckDuckGo API")
+                        raise ValueError("Test response detected")
+                    
+                    results = []
+                    
+                    # Check for instant answer
+                    if data.get("AbstractText") and len(data.get("AbstractText", "").strip()) > 10:
+                        if debugging:
+                            print(f"   Found instant answer: {data.get('Heading', 'No heading')}")
                         results.append({
-                            "title": topic.get("Result", "").split(" - ")[0] if " - " in topic.get("Result", "") else query,
-                            "snippet": topic.get("Text", ""),
-                            "url": topic.get("FirstURL", ""),
-                            "source": "DuckDuckGo Related"
+                            "title": data.get("Heading", query.title()),
+                            "snippet": data.get("AbstractText", ""),
+                            "url": data.get("AbstractURL", ""),
+                            "source": "DuckDuckGo Instant Answer"
                         })
+                    
+                    # Check for definition
+                    if data.get("Definition") and len(data.get("Definition", "").strip()) > 10:
+                        if debugging:
+                            print(f"   Found definition")
+                        results.append({
+                            "title": f"Definition: {query}",
+                            "snippet": data.get("Definition", ""),
+                            "url": data.get("DefinitionURL", ""),
+                            "source": "DuckDuckGo Definition"
+                        })
+                    
+                    # Check for related topics
+                    related_topics = data.get("RelatedTopics", [])
+                    if related_topics:
+                        if debugging:
+                            print(f"   Found {len(related_topics)} related topics")
+                        for i, topic in enumerate(related_topics[:num_results-len(results)]):
+                            if isinstance(topic, dict) and topic.get("Text"):
+                                text = topic.get("Text", "")
+                                if len(text.strip()) > 20:  # Only meaningful content
+                                    if debugging:
+                                        print(f"     Topic {i+1}: {text[:50]}...")
+                                    
+                                    # Extract title from Result field or use query
+                                    title = query.title()
+                                    if topic.get("Result"):
+                                        result_text = topic.get("Result", "")
+                                        if " - " in result_text:
+                                            title = result_text.split(" - ")[0]
+                                        elif len(result_text) < 100:
+                                            title = result_text
+                                    
+                                    results.append({
+                                        "title": title,
+                                        "snippet": text,
+                                        "url": topic.get("FirstURL", ""),
+                                        "source": "DuckDuckGo Related"
+                                    })
+                    
+                    # If we got meaningful results, return them
+                    if results:
+                        if debugging:
+                            print(f"    STRATEGY 1 SUCCESS: Found {len(results)} results")
+                            for i, result in enumerate(results, 1):
+                                print(f"     Result {i}: {result['title']}")
+                        
+                        return {
+                            "query": query,
+                            "original_query": original_query,
+                            "results": results[:num_results],
+                            "total_results": len(results),
+                            "success": True,
+                            "source": "DuckDuckGo API"
+                        }
+                    else:
+                        if debugging:
+                            print(f"    Strategy 1: No meaningful results found")
+                
+                except ValueError as json_error:
+                    if debugging:
+                        print(f"    Strategy 1 JSON ERROR: {json_error}")
+                    # Continue to next strategy
+        
+        except (requests.RequestException, ValueError) as e:
+            if debugging:
+                print(f"    Strategy 1 ERROR: {e}")
+        
+        # Strategy 2: Enhanced domain-specific search for websites
+        if any(tld in query.lower() for tld in ['.com', '.org', '.net', '.edu', '.gov', '.io', '.co']):
+            if debugging:
+                print(f"   Strategy 2: Domain-specific search")
             
-            # If we got results, return them
-            if results:
+            # Extract domain name
+            domain_match = re.search(r'([a-zA-Z0-9-]+\.(?:com|org|net|edu|gov|io|co|uk|de|fr|tr))', query.lower())
+            if domain_match:
+                domain = domain_match.group(1)
+                
+                # Create domain-specific results
+                results = [
+                    {
+                        "title": f"Visit {domain}",
+                        "snippet": f"To visit {domain}, you can go directly to https://{domain} or http://{domain}. This appears to be a website domain.",
+                        "url": f"https://{domain}",
+                        "source": "Domain suggestion"
+                    },
+                    {
+                        "title": f"Information about {domain}",
+                        "snippet": f"For information about {domain}, you could check: 1) The website directly, 2) WHOIS databases, 3) Web archives, or 4) Search engines like Google.",
+                        "url": f"https://www.google.com/search?q={domain}",
+                        "source": "Domain research guidance"
+                    }
+                ]
+                
                 if debugging:
-                    print(f"Found {len(results)} web search results")
+                    print(f"    STRATEGY 2 SUCCESS: Created domain-specific results for {domain}")
                 
                 return {
                     "query": query,
-                    "results": results[:num_results],
+                    "original_query": original_query,
+                    "results": results,
                     "total_results": len(results),
                     "success": True,
-                    "source": "DuckDuckGo API"
+                    "source": "Domain-specific search"
                 }
         
-        except requests.RequestException as e:
-            if debugging:
-                print(f"DuckDuckGo API error: {e}")
+        # Strategy 3: Enhanced fallback with intelligent guidance
+        if debugging:
+            print(f"   Strategy 3: Enhanced fallback guidance")
         
-        # Fallback: Return helpful message about search
-        return {
+        fallback_message = f"I would search for '{query}' but don't have access to live web search at the moment."
+        search_suggestions = []
+        
+        # Provide specific guidance based on query type
+        query_lower = query.lower()
+        
+        if any(term in query_lower for term in ["exchange rate", "currency", "usd", "try", "eur", "gbp", "bitcoin", "crypto"]):
+            guidance_type = "currency/finance"
+            fallback_message += " For current financial information, I recommend:"
+            search_suggestions = [
+                "XE.com for exchange rates",
+                "Google Finance or Yahoo Finance",
+                "CoinMarketCap for cryptocurrency",
+                "Your bank's website for official rates"
+            ]
+        elif any(term in query_lower for term in ["news", "latest", "current", "recent", "breaking"]):
+            guidance_type = "news"
+            fallback_message += " For latest news, try:"
+            search_suggestions = [
+                "Google News (news.google.com)",
+                "BBC News (bbc.com/news)",
+                "Reuters (reuters.com)",
+                "Associated Press (apnews.com)"
+            ]
+        elif any(term in query_lower for term in ["weather", "temperature", "forecast", "climate"]):
+            guidance_type = "weather"
+            fallback_message += " For weather information, check:"
+            search_suggestions = [
+                "Weather.com",
+                "AccuWeather.com",
+                "Google Weather (search 'weather [location]')",
+                "Your local meteorological service"
+            ]
+        elif any(term in query_lower for term in ["stock", "share", "market", "trading", "nasdaq", "dow"]):
+            guidance_type = "stocks"
+            fallback_message += " For stock market information:"
+            search_suggestions = [
+                "Yahoo Finance (finance.yahoo.com)",
+                "Google Finance",
+                "Bloomberg (bloomberg.com)",
+                "MarketWatch (marketwatch.com)"
+            ]
+        elif any(term in query_lower for term in ["recipe", "cooking", "ingredient", "food"]):
+            guidance_type = "recipes"
+            fallback_message += " For recipes and cooking information:"
+            search_suggestions = [
+                "AllRecipes (allrecipes.com)",
+                "Food Network (foodnetwork.com)",
+                "BBC Good Food",
+                "Serious Eats (seriouseats.com)"
+            ]
+        else:
+            guidance_type = "general"
+            fallback_message += " You can search for this on:"
+            search_suggestions = [
+                "Google (google.com)",
+                "DuckDuckGo (duckduckgo.com)",
+                "Bing (bing.com)",
+                "Specialized search engines for your topic"
+            ]
+        
+        # Format the suggestions
+        if search_suggestions:
+            fallback_message += "\n• " + "\n• ".join(search_suggestions)
+        
+        if debugging:
+            print(f"   Guidance type: {guidance_type}")
+            print(f"   Suggestions count: {len(search_suggestions)}")
+        
+        result = {
             "query": query,
+            "original_query": original_query,
             "results": [
                 {
-                    "title": f"Search suggestion for: {query}",
-                    "snippet": f"I would search for '{query}' but don't have access to live web search. "
-                              f"You can search for this on Google, Bing, or DuckDuckGo.",
-                    "url": f"https://duckduckgo.com/?q={query.replace(' ', '+')}",
-                    "source": "Search suggestion"
+                    "title": f"Search guidance for: {query}",
+                    "snippet": fallback_message,
+                    "url": f"https://www.google.com/search?q={query.replace(' ', '+')}",
+                    "source": "Search guidance"
                 }
             ],
             "total_results": 1,
             "success": True,
-            "source": "Fallback suggestion",
-            "note": "Live web search not available - this is a search suggestion"
+            "source": "Enhanced fallback guidance",
+            "note": "Live web search not available - providing enhanced search guidance",
+            "guidance_type": guidance_type
         }
+        
+        if debugging:
+            print(f"    STRATEGY 3 SUCCESS: Returning enhanced guidance for {guidance_type} query")
+        
+        return result
         
     except Exception as e:
         if debugging:
-            print(f"Web search error: {e}")
+            print(f"    SEARCH ERROR: Unexpected error - {str(e)}")
+            import traceback
+            print(f"   Full traceback:")
+            traceback.print_exc()
         
         return {
             "query": query,
+            "original_query": original_query if 'original_query' in locals() else query,
             "error": f"Search error: {str(e)}",
             "success": False
         }
@@ -249,9 +511,14 @@ def execute_tool(function_name: str, parameters: Dict[str, Any]) -> Dict[str, An
         Dictionary containing the result or error information
     """
     if debugging:
-        print(f"Executing tool: {function_name} with parameters: {parameters}")
+        print(f"TOOL EXECUTION DEBUG")
+        print(f"   Function: {function_name}")
+        print(f"   Parameters: {parameters}")
+        print(f"   Available tools: {list(TOOL_FUNCTIONS.keys())}")
     
     if function_name not in TOOL_FUNCTIONS:
+        if debugging:
+            print(f"    TOOL ERROR: Function '{function_name}' not found")
         return {
             "error": f"Tool '{function_name}' not found. Available tools: {list(TOOL_FUNCTIONS.keys())}",
             "success": False
@@ -259,19 +526,38 @@ def execute_tool(function_name: str, parameters: Dict[str, Any]) -> Dict[str, An
     
     try:
         function = TOOL_FUNCTIONS[function_name]
+        if debugging:
+            print(f"    Function found, executing...")
+        
         result = function(**parameters)
         
         if debugging:
-            print(f"Tool execution result: {result}")
+            print(f"    TOOL SUCCESS: Execution completed")
+            if isinstance(result, dict):
+                if result.get("success"):
+                    print(f"     Result type: {type(result.get('result', 'N/A'))}")
+                    if function_name == "calculate_math":
+                        print(f"     Math result: {result.get('result')}")
+                    elif function_name == "search_web":
+                        print(f"     Search results count: {result.get('total_results', 0)}")
+                else:
+                    print(f"     Tool reported failure: {result.get('error', 'Unknown error')}")
         
         return result
         
     except TypeError as e:
+        if debugging:
+            print(f"    PARAMETER ERROR: {str(e)}")
         return {
             "error": f"Invalid parameters for {function_name}: {str(e)}",
             "success": False
         }
     except Exception as e:
+        if debugging:
+            print(f"    EXECUTION ERROR: {str(e)}")
+            import traceback
+            print(f"   Full traceback:")
+            traceback.print_exc()
         return {
             "error": f"Error executing {function_name}: {str(e)}",
             "success": False
