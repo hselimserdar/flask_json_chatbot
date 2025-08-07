@@ -26,15 +26,16 @@ A modern Flask-based chatbot application with ChatGPT-style conversation branchi
 
 3. **Configure environment**
    - Rename `.env.example` to `.env`
-   - Add your API keys and configuration:
+   - Follow the detailed [API Keys Setup Guide](API_KEYS_SETUP.md) to obtain and configure:
      ```
      GEMINI_API_KEY=your_gemini_api_key_here
      SECRET_KEY=your_secret_key_here
      ```
+   - See [API_KEYS_SETUP.md](API_KEYS_SETUP.md) for step-by-step instructions
 
 4. **Run the application**
    ```bash
-   python chatbot_manage.py
+   python __init__.py
    ```
 
 5. **Access the application**
