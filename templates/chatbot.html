@@ -78,6 +78,9 @@
         let currentSessionId = null;
         let currentPage = 1;
         let isGuest = false;
+        let currentTreePath = null;
+        let currentConversationBranches = {};  // Store branch structure
+        let currentSessionMessages = [];  // Store complete session messages for branch navigation
 
         // Check authentication on page load
         window.addEventListener('load', function () {
@@ -464,6 +467,17 @@
                 const url = currentSessionId ? `/chatbot?session=${currentSessionId}` : '/chatbot';
                 let response;
                 
+                // Prepare request body with message and parent_message_id if needed
+                const requestBody = { message };
+                
+                // If we have a tree path, we need to find the last bot message to use as parent
+                if (currentTreePath && currentSessionId) {
+                    const lastBotMessage = getLastBotMessageFromCurrentBranch();
+                    if (lastBotMessage) {
+                        requestBody.parent_message_id = lastBotMessage.id;
+                    }
+                }
+                
                 if (isGuest) {
                     // Guest users don't need token refresh
                     response = await fetch(url, {
@@ -471,13 +485,13 @@
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ message })
+                        body: JSON.stringify(requestBody)
                     });
                 } else {
                     // Authenticated users use the enhanced request wrapper
                     response = await makeAuthenticatedRequest(url, {
                         method: 'POST',
-                        body: JSON.stringify({ message })
+                        body: JSON.stringify(requestBody)
                     });
                 }
 
@@ -497,19 +511,92 @@
                         updateSessionTitleInSidebar(currentSessionId, data.title);
                     }
                     
-                    // Fix: check if data has the expected structure
+                    // Process branching response
                     let botMessage = '';
+                    let botMessageData = null;
+                    let userMessageData = null;
+                    
                     if (data.messages && data.messages.length > 1) {
-                        // Get bot message from messages array
+                        // Get user and bot message from messages array
+                        const userMsg = data.messages.find(msg => msg.sender === 'user');
                         const botMsg = data.messages.find(msg => msg.sender === 'bot');
                         botMessage = botMsg ? botMsg.content : '';
+                        botMessageData = botMsg;
+                        userMessageData = userMsg;
+                        
+                        // Update the user message div with proper data for edit controls
+                        if (userMessageData && !isGuest) {
+                            const lastUserDiv = document.querySelector('.message.user-message:last-of-type');
+                            if (lastUserDiv) {
+                                // Updating user message with enhanced data
+                                // Add message data attributes - convert message_id to id for consistency
+                                lastUserDiv.dataset.messageId = userMessageData.message_id || userMessageData.id;
+                                lastUserDiv.dataset.connectedFrom = userMessageData.connected_from || '';
+                                lastUserDiv.dataset.connectsTo = userMessageData.connects_to || '';
+                                lastUserDiv.dataset.connections = userMessageData.connections || 0;
+                                
+                                // Create a normalized messageData object with 'id' field
+                                const normalizedUserData = {
+                                    id: userMessageData.message_id || userMessageData.id,
+                                    connected_from: userMessageData.connected_from,
+                                    connects_to: userMessageData.connects_to,
+                                    connections: userMessageData.connections
+                                };
+                                
+                                // Add edit controls if they don't already exist AND it's not the first message
+                                if (!lastUserDiv.querySelector('.user-edit-controls')) {
+                                    // Adding edit controls to user message
+                                    
+                                    // Check if this is the first message (connected_from === 'main') or new session
+                                    if (normalizedUserData.connected_from !== 'main' && currentSessionId) {
+                                        const editControlsDiv = addUserMessageEditControls(lastUserDiv, normalizedUserData, message);
+                                        if (editControlsDiv) {
+                                            lastUserDiv.appendChild(editControlsDiv);
+                                            // Edit controls added successfully
+                                        } else {
+                                            // Failed to create edit controls - configuration issue
+                                        }
+                                    } else {
+                                        // Edit controls NOT added - first message or new session
+                                    }
+                                } else {
+                                    // Edit controls already exist
+                                }
+                            } else {
+                                // Could not find last user message div
+                            }
+                        } else {
+                            console.log('No user message data or guest mode - userMessageData:', !!userMessageData, 'isGuest:', isGuest);
+                        }
                     } else {
                         // Fallback to direct reply field
                         botMessage = data.reply || '';
                     }
 
                     if (botMessage) {
-                        addMessageToChat('bot', botMessage);
+                        const botDiv = addMessageToChat('bot', botMessage, null, false, botMessageData);
+                        
+                        // Update stored session messages for branching functionality
+                        if (data.messages) {
+                            // Add the new messages to our stored session messages
+                            data.messages.forEach(newMsg => {
+                                // Check if message already exists (avoid duplicates)
+                                const existingIndex = currentSessionMessages.findIndex(msg => 
+                                    (msg.id || msg.message_id) === (newMsg.id || newMsg.message_id)
+                                );
+                                if (existingIndex === -1) {
+                                    currentSessionMessages.push(newMsg);
+                                } else {
+                                    // Update existing message with new data
+                                    currentSessionMessages[existingIndex] = newMsg;
+                                }
+                            });
+                            
+                            updateBranchStructure(data.messages);
+                        }
+                        
+                        // Update tree path display if needed
+                        updateTreePathDisplay();
                     } else {
                         showErrorMessage('Received empty response from the chatbot. Please try again.');
                     }
@@ -544,7 +631,7 @@
             }
         }
 
-        function addMessageToChat(sender, message, timestamp = null, showActions = false) {
+        function addMessageToChat(sender, message, timestamp = null, showActions = false, messageData = null) {
             const chatMessages = document.getElementById('chatMessages');
 
             // Remove welcome message if it exists
@@ -555,6 +642,14 @@
 
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${sender}-message`;
+            
+            // Add message data attributes for branching
+            if (messageData) {
+                messageDiv.dataset.messageId = messageData.id;
+                messageDiv.dataset.connectedFrom = messageData.connected_from || '';
+                messageDiv.dataset.connectsTo = messageData.connects_to || '';
+                messageDiv.dataset.connections = messageData.connections || 0;
+            }
 
             const messageContent = document.createElement('div');
             messageContent.className = 'message-content';
@@ -576,6 +671,49 @@
 
             messageDiv.appendChild(messageContent);
             messageDiv.appendChild(timestampDiv);
+
+            // Add branch navigation for user messages that connect FROM bot messages with multiple branches (ChatGPT style)
+            if (sender === 'user' && messageData && messageData.connected_from) {
+                // Find the bot message this user message connects from
+                const allMessages = getCurrentSessionMessages();
+                const parentBotMessage = allMessages.find(msg => 
+                    msg.id.toString() === messageData.connected_from.toString() && msg.sender === 'bot'
+                );
+                
+                if (parentBotMessage && parentBotMessage.connections > 1) {
+                    // Adding branch navigation for user message
+                    const navigationDiv = addBranchNavigationControls(messageDiv, {
+                        id: messageData.id,
+                        connects_to: parentBotMessage.connects_to,
+                        connections: parentBotMessage.connections,
+                        parent_bot_id: parentBotMessage.id
+                    });
+                    if (navigationDiv) {
+                        messageDiv.appendChild(navigationDiv);
+                        // Branch navigation added successfully
+                    } else {
+                        // addBranchNavigationControls returned null
+                    }
+                } else {
+                    console.log('No branch navigation needed - parent bot has', parentBotMessage?.connections || 0, 'connections');
+                }
+            } else {
+                console.log('Branch navigation NOT checked - sender:', sender, 'messageData:', !!messageData, 'connected_from:', messageData?.connected_from);
+            }
+
+            // Add ChatGPT-style edit button for user messages (not guest mode, not first message, and not new session)
+            if (sender === 'user' && !isGuest && messageData && messageData.connected_from !== 'main' && currentSessionId) {
+                // Adding edit controls for user message
+                const editControlsDiv = addUserMessageEditControls(messageDiv, messageData, message);
+                if (editControlsDiv) {
+                    messageDiv.appendChild(editControlsDiv);
+                    // Edit controls added successfully
+                } else {
+                    // addUserMessageEditControls returned null
+                }
+            } else {
+                console.log('Edit controls NOT added - sender:', sender, 'isGuest:', isGuest, 'messageData:', !!messageData, 'connected_from:', messageData?.connected_from, 'currentSessionId:', currentSessionId);
+            }
 
             // Add action buttons for user messages that failed to send
             if (showActions && sender === 'user') {
@@ -855,6 +993,9 @@
 
         async function loadSession(sessionId) {
             try {
+                // Reset tree path when loading a new session
+                currentTreePath = null;
+                
                 const response = await makeAuthenticatedRequest(`/chatbot/message?session=${sessionId}`, {
                     method: 'GET'
                 });
@@ -864,7 +1005,18 @@
                 if (response.ok) {
                     currentSessionId = sessionId;
                     updateURL();
-                    displayMessages(data.data || []); // Fix: use data.data instead of data.messages
+                    
+                    // Store complete session messages for branch navigation
+                    const messages = data.data || [];
+                    currentSessionMessages = messages;
+                    
+                    // Calculate the default tree path for the main conversation branch
+                    if (messages.length > 0) {
+                        currentTreePath = calculateMainTreePath(messages);
+                        // Calculated main tree path
+                    }
+                    
+                    displayMessages(messages); // Fix: use data.data instead of data.messages
                     // Update active session in sidebar
                     updateActiveSession(sessionId);
                     // Check if we should block input after loading messages
@@ -894,27 +1046,70 @@
             if (messages.length === 0) {
                 chatMessages.innerHTML = `
                     <div class="welcome-message">
-                        <h3>Session Loaded! 👋</h3>
+                        <h3>Session Loaded!</h3>
                         <p>Continue your conversation or start a new topic.</p>
                     </div>
                 `;
                 return;
             }
 
-            messages.forEach(msg => {
-                addMessageToChat(msg.sender, msg.content, msg.created_at);
+            // Clear conversation branches
+            currentConversationBranches = {};
+
+            // Filter messages based on current tree path
+            let messagesToDisplay = messages;
+            
+            if (currentTreePath) {
+                const pathIds = currentTreePath.split(',').filter(id => id !== '');
+                
+                // Show messages that are in the current tree path OR have multiple connections (need navigation)
+                messagesToDisplay = messages.filter(msg => {
+                    const isInPath = pathIds.includes(msg.id.toString());
+                    const hasMultipleConnections = msg.connections > 1;
+                    
+                    if (isInPath) {
+                        return true;
+                    } else if (hasMultipleConnections) {
+                        // Include parent messages with multiple connections even if not in current path
+                        // This ensures branch navigation controls are visible
+                        return true;
+                    }
+                    return false;
+                });
+            }
+
+            messagesToDisplay.forEach((msg, index) => {
+                const messageDiv = addMessageToChat(msg.sender, msg.content, msg.created_at, false, msg);
+                
+                // Store branch information
+                if (msg.connects_to && msg.connections > 0) {
+                    currentConversationBranches[msg.id] = {
+                        connects_to: msg.connects_to,
+                        connections: msg.connections
+                    };
+                    
+                    // Add visual indicator for messages with branches
+                    messageDiv.classList.add('has-branches');
+                }
             });
+            
+            // Update tree path display
+            updateTreePathDisplay();
         }
 
         function startNewSession() {
             currentSessionId = null;
+            currentTreePath = null;
+            currentConversationBranches = {};
+            currentSessionMessages = []; // Clear session messages for new session
             document.getElementById('chatMessages').innerHTML = `
                 <div class="welcome-message">
-                    <h3>New Conversation Started! 👋</h3>
+                    <h3>New Conversation Started!</h3>
                     <p>What would you like to talk about?</p>
                 </div>
             `;
             updateURL();
+            updateTreePathDisplay();
             // Clear active session highlighting
             updateActiveSession(null);
         }
@@ -945,7 +1140,7 @@
         }
 
         function updatePagination(hasNext, hasPrevious) {
-            console.log(`Updating pagination - hasNext: ${hasNext}, hasPrevious: ${hasPrevious}, currentPage: ${currentPage}`);
+            // Updating pagination controls
 
             const prevBtn = document.getElementById('prevPage');
             const nextBtn = document.getElementById('nextPage');
@@ -955,14 +1150,11 @@
 
             document.getElementById('pageInfo').textContent = `Page ${currentPage}`;
 
-            console.log(`Previous button disabled: ${prevBtn.disabled}, Next button disabled: ${nextBtn.disabled}`);
+            // Button states updated
         }
 
         function changePage(page) {
-            console.log(`changePage called with page: ${page}, currentPage: ${currentPage}`);
-
             if (page < 1) {
-                console.log('Page < 1, returning');
                 return;
             }
 
@@ -970,15 +1162,11 @@
             const prevBtn = document.getElementById('prevPage');
             const nextBtn = document.getElementById('nextPage');
 
-            console.log(`Previous button disabled: ${prevBtn.disabled}, Next button disabled: ${nextBtn.disabled}`);
-
             // Don't allow clicking if button is disabled
             if (page < currentPage && prevBtn.disabled) {
-                console.log('Previous button is disabled, returning');
                 return;
             }
             if (page > currentPage && nextBtn.disabled) {
-                console.log('Next button is disabled, returning');
                 return;
             }
 
@@ -1132,6 +1320,706 @@
                 // Unblock input in case it was blocked
                 setWaitingForResponse(false);
             }
+        }
+
+        // ChatGPT-Style Branching Functions
+        function addUserMessageEditControls(messageDiv, messageData, originalMessage) {
+            if (!messageData || !messageData.id) return null;
+            
+            const controlsDiv = document.createElement('div');
+            controlsDiv.className = 'user-edit-controls';
+            
+            controlsDiv.innerHTML = `
+                <button class="edit-message-btn" onclick="editUserMessage('${messageData.id}', '${originalMessage.replace(/'/g, "\\'")}')">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                        <path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    </svg>
+                </button>
+            `;
+            
+            return controlsDiv;
+        }
+        
+        function addBranchNavigationControls(messageDiv, messageData) {
+            if (!messageData || !messageData.connects_to || messageData.connections <= 1) {
+                return null;
+            }
+            
+            const navigationDiv = document.createElement('div');
+            navigationDiv.className = 'branch-navigation-controls';
+            
+            // Get current branch index based on parent bot message branches
+            const branchIds = messageData.connects_to.split(',');
+            const parentBotId = messageData.parent_bot_id || messageData.id; // fallback for compatibility
+            const currentBranchIndex = getCurrentBranchIndex(parentBotId, branchIds);
+            
+            navigationDiv.innerHTML = `
+                <div class="branch-nav-display">
+                    <button class="nav-arrow nav-left" onclick="navigateToPreviousBranch('${parentBotId}')" ${currentBranchIndex === 0 ? 'disabled' : ''}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="15,18 9,12 15,6"></polyline>
+                        </svg>
+                    </button>
+                    <span class="branch-counter">${currentBranchIndex + 1}/${branchIds.length}</span>
+                    <button class="nav-arrow nav-right" onclick="navigateToNextBranch('${parentBotId}')" ${currentBranchIndex === branchIds.length - 1 ? 'disabled' : ''}>
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <polyline points="9,18 15,12 9,6"></polyline>
+                        </svg>
+                    </button>
+                </div>
+            `;
+            
+            // Created branch navigation for message
+            return navigationDiv;
+        }
+        
+        async function editUserMessage(messageId, originalMessage) {
+            // Show edit modal or inline editor
+            const newMessage = prompt('Edit your message:', originalMessage);
+            if (!newMessage || !newMessage.trim() || newMessage.trim() === originalMessage) {
+                return;
+            }
+            
+            if (!currentSessionId || isGuest) {
+                showErrorMessage('Editing is only available for authenticated users in saved sessions.');
+                return;
+            }
+            
+            // Block input while processing
+            setWaitingForResponse(true);
+            
+            try {
+                // If currentSessionMessages is empty, wait a bit for it to be populated
+                if (currentSessionMessages.length === 0) {
+                    // Waiting for session messages to be populated...
+                    await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms
+                }
+                
+                // Find the parent message (the bot message that this user message responded to)
+                const parentMessageId = await getParentBotMessage(messageId);
+                // Edit workflow initiated
+                // Current session messages available
+                
+                if (!parentMessageId) {
+                    console.error(`Could not find parent message for user message ${messageId}`);
+                    showErrorMessage('Cannot create branch: Unable to find parent message. Please refresh the page and try again.');
+                    return;
+                }
+                
+                const response = await makeAuthenticatedRequest(`/chatbot?session=${currentSessionId}`, {
+                    method: 'POST',
+                    body: JSON.stringify({ 
+                        message: newMessage.trim(),
+                        parent_message_id: parentMessageId
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.messages) {
+                    // Get the new user message ID from the response
+                    const newUserMessage = data.messages.find(m => m.sender === 'user');
+                    const newBotMessage = data.messages.find(m => m.sender === 'bot');
+                    
+                    if (newUserMessage && newBotMessage) {
+                        // Update stored session messages with the new branch messages
+                        if (data.messages) {
+                            data.messages.forEach(newMsg => {
+                                // Check if message already exists (avoid duplicates)
+                                const existingIndex = currentSessionMessages.findIndex(msg => 
+                                    (msg.id || msg.message_id) === (newMsg.id || newMsg.message_id)
+                                );
+                                if (existingIndex === -1) {
+                                    currentSessionMessages.push(newMsg);
+                                } else {
+                                    // Update existing message with new data
+                                    currentSessionMessages[existingIndex] = newMsg;
+                                }
+                            });
+                            // Updated session messages after branch creation
+                        }
+                        
+                        // Update the parent bot message's connection count in currentSessionMessages
+                        const parentBotIndex = currentSessionMessages.findIndex(msg => 
+                            (msg.id || msg.message_id).toString() === parentMessageId.toString()
+                        );
+                        if (parentBotIndex !== -1) {
+                            const parentMsg = currentSessionMessages[parentBotIndex];
+                            
+                            // Update connects_to to include the new user message
+                            const currentConnectsTo = parentMsg.connects_to || '';
+                            const connectsToArray = currentConnectsTo ? currentConnectsTo.split(',').filter(id => id !== '') : [];
+                            
+                            if (!connectsToArray.includes(newUserMessage.id.toString())) {
+                                connectsToArray.push(newUserMessage.id.toString());
+                                parentMsg.connects_to = connectsToArray.join(',');
+                                parentMsg.connections = connectsToArray.length;
+                                // Updated parent bot message structure
+                            }
+                        }
+                        
+                        // Calculate and navigate to the new branch path
+                        const newTreePath = await calculateNewBranchTreePath(parentMessageId, newUserMessage.id, newBotMessage.id);
+                        
+                        // Navigate to the new branch using the complete session data
+                        currentTreePath = newTreePath;
+                        updateURL();
+                        
+                        // Get all messages from the current session data and display the branch
+                        const allMessages = getCurrentSessionMessages();
+                        displayMessages(allMessages);
+                        
+                        // AFTER displaying messages, update the DOM to ensure branch navigation controls appear
+                        setTimeout(() => {
+                            const parentBotIndex = currentSessionMessages.findIndex(msg => 
+                                (msg.id || msg.message_id).toString() === parentMessageId.toString()
+                            );
+                            if (parentBotIndex !== -1) {
+                                const parentMsg = currentSessionMessages[parentBotIndex];
+                                const parentMessageDiv = document.querySelector(`[data-message-id="${parentMessageId}"]`);
+                                if (parentMessageDiv && parentMsg.connections > 1) {
+                                    // Update the data attributes
+                                    parentMessageDiv.dataset.connectsTo = parentMsg.connects_to;
+                                    parentMessageDiv.dataset.connections = parentMsg.connections;
+                                    
+                                    // Since we moved navigation to user messages, find the user message that connects from this bot message
+                                    // and add navigation controls to it
+                                    const userMessageWithBranches = currentSessionMessages.find(msg => 
+                                        msg.sender === 'user' && msg.connected_from === parentMessageId.toString()
+                                    );
+                                    
+                                    if (userMessageWithBranches) {
+                                        const userMessageDiv = document.querySelector(`[data-message-id="${userMessageWithBranches.id}"]`);
+                                        if (userMessageDiv) {
+                                            // Remove existing navigation controls if any
+                                            const existingNav = userMessageDiv.querySelector('.branch-navigation-controls');
+                                            if (existingNav) {
+                                                existingNav.remove();
+                                            }
+                                            
+                                            // Add new navigation controls to the user message
+                                            const navigationDiv = addBranchNavigationControls(userMessageDiv, {
+                                                id: userMessageWithBranches.id,
+                                                connects_to: parentMsg.connects_to,
+                                                connections: parentMsg.connections,
+                                                parent_bot_id: parentMsg.id
+                                            });
+                                            if (navigationDiv) {
+                                                userMessageDiv.appendChild(navigationDiv);
+                                                // Added branch navigation controls to user message after DOM update
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }, 100); // Small delay to ensure DOM is fully rendered
+                        
+                        showSuccessMessage('Message edited and new branch created! Showing new branch.');
+                    } else {
+                        // Fallback: reload the entire session
+                        await loadSession(currentSessionId);
+                        showSuccessMessage('Message edited and new branch created!');
+                    }
+                } else {
+                    showErrorMessage(data.message || 'Failed to edit message');
+                }
+            } catch (error) {
+                console.error('Edit message error:', error);
+                showErrorMessage('Failed to edit message. Please try again.');
+            } finally {
+                setWaitingForResponse(false);
+            }
+        }
+        
+        async function getParentBotMessage(userMessageId) {
+            // getParentBotMessage called for user message
+            
+            // First try to get from stored session messages
+            const allMessages = getCurrentSessionMessages();
+            console.log(`  - Found ${allMessages.length} stored session messages`);
+            
+            if (allMessages && allMessages.length > 0) {
+                const userMessage = allMessages.find(msg => {
+                    const msgId = msg.id || msg.message_id;
+                    return msgId && msgId.toString() === userMessageId.toString();
+                });
+                if (userMessage) {
+                    console.log(`  - Found user message in session data:`, userMessage);
+                    if (userMessage.connected_from) {
+                        console.log(`  - Found parent from session data: ${userMessage.connected_from} for user message ${userMessageId}`);
+                        return userMessage.connected_from;
+                    } else {
+                        console.log(`  - User message has no connected_from field`);
+                    }
+                } else {
+                    console.log(`  - User message ${userMessageId} not found in session data`);
+                    console.log(`  - Available message IDs:`, allMessages.map(m => m.id || m.message_id));
+                }
+            } else {
+                console.log(`  - No stored session messages available`);
+            }
+            
+            // Fallback to DOM data
+            const messageDiv = document.querySelector(`[data-message-id="${userMessageId}"]`);
+            if (messageDiv) {
+                console.log(`  - Found parent from DOM: ${messageDiv.dataset.connectedFrom} for user message ${userMessageId}`);
+                return messageDiv.dataset.connectedFrom;
+            }
+            
+            console.log(`  - No parent found for user message ${userMessageId}`);
+            return null;
+        }
+        
+        function getCurrentSessionMessages() {
+            return currentSessionMessages || [];
+        }
+        
+        async function calculateNewBranchTreePath(parentBotId, newUserId, newBotId) {
+            // Build the full tree path from the root of the conversation to the new branch
+            try {
+                // First try to use the stored session messages
+                let messages = getCurrentSessionMessages();
+                
+                // If we don't have enough messages stored, fetch from server
+                if (messages.length === 0) {
+                    console.log('No stored messages, fetching from server for tree path calculation');
+                    const response = await makeAuthenticatedRequest(`/chatbot/message?session=${currentSessionId}`, {
+                        method: 'GET'
+                    });
+                    
+                    if (!response.ok) {
+                        console.error('Failed to get session messages for tree path calculation');
+                        return `,${parentBotId},${newUserId},${newBotId}`;
+                    }
+                    
+                    const data = await response.json();
+                    messages = data.data || [];
+                } else {
+                    // Using stored session messages for tree path calculation
+                }
+                
+                // Create a map of message ID to message for easy lookup
+                const messageMap = {};
+                messages.forEach(msg => {
+                    messageMap[msg.id] = msg;
+                });
+                
+                // Build the full path by tracing backward from parent to root, then forward
+                const pathIds = [''];  // Start with empty string for root
+                
+                // Tracing path to parent bot
+                
+                // Simple backward tracing from parentBotId to root
+                const backwardPath = [];
+                let currentId = parentBotId;
+                
+                while (currentId && messageMap[currentId]) {
+                    const msg = messageMap[currentId];
+                    backwardPath.unshift(currentId); // Add to beginning
+                    console.log(`  ← ${currentId} (${msg.sender}) from ${msg.connected_from}`);
+                    
+                    if (msg.connected_from === 'main') {
+                        break;
+                    }
+                    currentId = msg.connected_from;
+                }
+                
+                // Add the traced path
+                pathIds.push(...backwardPath);
+                
+                // Add the new branch messages to the path
+                pathIds.push(newUserId, newBotId);
+                
+                const fullTreePath = pathIds.join(',');
+                console.log('Calculated new branch tree path:', fullTreePath);
+                return fullTreePath;
+                
+            } catch (error) {
+                console.error('Error calculating tree path:', error);
+                // Fallback to simple path
+                return `${parentBotId},${newUserId},${newBotId}`;
+            }
+        }
+        
+        async function loadSessionWithTreePath(sessionId, treePath) {
+            try {
+                console.log('Loading session with tree path:', sessionId, treePath);
+                
+                const response = await makeAuthenticatedRequest(`/chatbot/message?session=${sessionId}&tree=${encodeURIComponent(treePath)}`, {
+                    method: 'GET'
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    currentSessionId = sessionId;
+                    currentTreePath = treePath;
+                    updateURL();
+                    displayMessages(data.data || []);
+                    updateActiveSession(sessionId);
+                    checkIfWaitingForResponse();
+                    console.log('Successfully loaded session with tree path');
+                } else {
+                    console.error('Failed to load session with tree path:', data);
+                    // Fallback to loading without tree path
+                    await loadSession(sessionId);
+                }
+            } catch (error) {
+                console.error('Load session with tree path error:', error);
+                // Fallback to loading without tree path
+                await loadSession(sessionId);
+            }
+        }
+        
+        function calculateMainTreePath(messages) {
+            // Build the main conversation path by following connected_from relationships
+            const path = [''];
+            
+            let currentMessageId = 'main';
+            // Calculating main tree path
+            
+            while (true) {
+                // Find the message connected FROM the current message
+                const nextMessage = messages.find(msg => msg.connected_from === currentMessageId.toString());
+                if (!nextMessage) {
+                    console.log(`  No more messages connected from ${currentMessageId}`);
+                    break;
+                }
+                
+                // Add this message to the path
+                path.push(nextMessage.id.toString());
+                console.log(`  Added message ${nextMessage.id} (${nextMessage.sender}) to path`);
+                
+                // Move to this message and continue looking for what connects FROM it
+                currentMessageId = nextMessage.id.toString();
+                
+                // If this message has multiple branches, we need to choose one for the main path
+                if (nextMessage.connects_to) {
+                    const branchIds = nextMessage.connects_to.split(',').filter(id => id !== '');
+                    if (branchIds.length > 1) {
+                        console.log(`  Message ${nextMessage.id} has ${branchIds.length} branches: ${branchIds.join(', ')}`);
+                        console.log(`  Continuing main path with first connection`);
+                        // Don't change currentMessageId here - let the loop find the connected message
+                    }
+                }
+            }
+            
+            const treePath = path.join(',');
+            // Main tree path calculated
+            return treePath;
+        }
+
+        function getCurrentBranchIndex(botMessageId, branchIds) {
+            // getCurrentBranchIndex for bot message
+            console.log(`  - Current tree path: ${currentTreePath}`);
+            
+            // Determine which branch we're currently viewing based on the tree path
+            if (currentTreePath) {
+                const pathIds = currentTreePath.split(',');
+                console.log(`  - Tree path IDs: ${pathIds.join(', ')}`);
+                
+                // Look for any of the branch IDs (user message IDs) in our current path
+                for (let i = 0; i < branchIds.length; i++) {
+                    if (pathIds.includes(branchIds[i])) {
+                        console.log(`  - Found branch ${branchIds[i]} in path at index ${i}`);
+                        return i;
+                    }
+                }
+            }
+            
+            // If no tree path or no match found, check which user message branch is currently visible
+            // by looking for the first visible user message that connects from this bot message
+            const allMessages = getCurrentSessionMessages();
+            const visibleUserMessage = allMessages.find(msg => 
+                msg.sender === 'user' && 
+                msg.connected_from === botMessageId.toString() &&
+                document.querySelector(`[data-message-id="${msg.id}"]`)
+            );
+            
+            if (visibleUserMessage) {
+                const index = branchIds.indexOf(visibleUserMessage.id.toString());
+                if (index !== -1) {
+                    console.log(`  - Found visible user message ${visibleUserMessage.id} at branch index ${index}`);
+                    return index;
+                }
+            }
+            
+            console.log(`  - Defaulting to branch index 0`);
+            return 0; // Default to first branch
+        }
+        
+        async function navigateToPreviousBranch(botMessageId) {
+            // Find the bot message in the session data to get its branches
+            const allMessages = getCurrentSessionMessages();
+            const botMessage = allMessages.find(msg => msg.id.toString() === botMessageId.toString());
+            
+            if (!botMessage || !botMessage.connects_to) return;
+            
+            const branchIds = botMessage.connects_to.split(',');
+            const currentIndex = getCurrentBranchIndex(botMessageId, branchIds);
+            
+            if (currentIndex > 0) {
+                const targetBranchId = branchIds[currentIndex - 1];
+                await navigateToBranch(targetBranchId);
+            }
+        }
+        
+        async function navigateToNextBranch(botMessageId) {
+            // Find the bot message in the session data to get its branches
+            const allMessages = getCurrentSessionMessages();
+            const botMessage = allMessages.find(msg => msg.id.toString() === botMessageId.toString());
+            
+            if (!botMessage || !botMessage.connects_to) return;
+            
+            const branchIds = botMessage.connects_to.split(',');
+            const currentIndex = getCurrentBranchIndex(botMessageId, branchIds);
+            
+            if (currentIndex < branchIds.length - 1) {
+                const targetBranchId = branchIds[currentIndex + 1];
+                await navigateToBranch(targetBranchId);
+            }
+        }
+        
+        async function navigateToBranch(branchId) {
+            if (!currentSessionId) return;
+            
+            try {
+                console.log(`Navigating to branch ${branchId}`);
+                
+                // Instead of making a server request, calculate the new tree path
+                // and re-display messages with the updated path
+                
+                // Get all messages from the current session (they should already be loaded)
+                const response = await makeAuthenticatedRequest(`/chatbot/message?session=${currentSessionId}`, {
+                    method: 'GET'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    const allMessages = data.data || [];
+                    
+                    // Calculate new tree path that includes the target branch
+                    const newTreePath = calculateTreePathToBranch(allMessages, branchId);
+                    // New tree path calculated for branch
+                    
+                    currentTreePath = newTreePath;
+                    
+                    // Re-enable filtering and display messages for this tree path
+                    displayMessagesWithFiltering(allMessages);
+                    updateTreePathDisplay();
+                } else {
+                    showErrorMessage(data.message || 'Failed to navigate to branch');
+                }
+            } catch (error) {
+                console.error('Navigate branch error:', error);
+                showErrorMessage('Failed to navigate to branch. Please try again.');
+            }
+        }
+        
+        function calculateTreePathToBranch(messages, targetBranchId) {
+            // Find the target message
+            const targetMessage = messages.find(msg => msg.id.toString() === targetBranchId);
+            if (!targetMessage) {
+                console.error(`Target message ${targetBranchId} not found`);
+                return '';
+            }
+            
+            console.log(`Building tree path to branch ${targetBranchId}`);
+            
+            // Build path backwards from target to root
+            const pathIds = [''];
+            const reversePath = [];
+            let currentId = targetMessage.id;
+            
+            // Trace back to root to get the leading context
+            while (currentId) {
+                const msg = messages.find(m => m.id === currentId);
+                if (!msg) break;
+                
+                reversePath.unshift(currentId);
+                console.log(`  Added ${currentId} (${msg.sender}) to reverse path`);
+                
+                if (msg.connected_from === 'main') {
+                    break;
+                }
+                currentId = parseInt(msg.connected_from);
+            }
+            
+            // Add the backward path to our main path
+            pathIds.push(...reversePath);
+            
+            // Now continue forward from the target message to get the full branch conversation
+            let currentMessage = targetMessage;
+            while (currentMessage && currentMessage.connects_to) {
+                const nextIds = currentMessage.connects_to.split(',').filter(id => id !== '');
+                if (nextIds.length > 0) {
+                    // Follow the first connection (for now, could be enhanced to follow all)
+                    const nextId = parseInt(nextIds[0]);
+                    const nextMessage = messages.find(m => m.id === nextId);
+                    if (nextMessage) {
+                        pathIds.push(nextId.toString());
+                        console.log(`  Extended path with ${nextId} (${nextMessage.sender})`);
+                        currentMessage = nextMessage;
+                    } else {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+            
+            const finalPath = pathIds.join(',');
+            console.log(`Final branch path: ${finalPath}`);
+            return finalPath;
+        }
+        
+        function displayMessagesWithFiltering(messages) {
+            const chatMessages = document.getElementById('chatMessages');
+            chatMessages.innerHTML = '';
+
+            if (messages.length === 0) {
+                chatMessages.innerHTML = `
+                    <div class="welcome-message">
+                        <h3>Session Loaded! 👋</h3>
+                        <p>Continue your conversation or start a new topic.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Clear conversation branches
+            currentConversationBranches = {};
+
+            // displayMessagesWithFiltering called
+            // Current tree path logging
+
+            // Filter messages based on current tree path
+            let messagesToDisplay = messages;
+            
+            if (currentTreePath) {
+                // Filtering messages by tree path
+                const pathIds = currentTreePath.split(',').filter(id => id !== '');
+                
+                // Only show messages that are in the current tree path
+                messagesToDisplay = messages.filter(msg => {
+                    const isInPath = pathIds.includes(msg.id.toString());
+                    if (isInPath) {
+                        // Message is in path
+                    }
+                    return isInPath;
+                });
+                
+                // Displaying filtered messages
+            } else {
+                // No tree path set, displaying all messages
+            }
+
+            messagesToDisplay.forEach((msg, index) => {
+                // Adding message to chat
+                const messageDiv = addMessageToChat(msg.sender, msg.content, msg.created_at, false, msg);
+                
+                // Store branch information
+                if (msg.connects_to && msg.connections > 0) {
+                    currentConversationBranches[msg.id] = {
+                        connects_to: msg.connects_to,
+                        connections: msg.connections
+                    };
+                    
+                    // Add visual indicator for messages with branches
+                    messageDiv.classList.add('has-branches');
+                }
+            });
+            
+            // displayMessagesWithFiltering completed
+            
+            // Update tree path display
+            updateTreePathDisplay();
+        }
+        
+        function updateBranchStructure(messages) {
+            messages.forEach(msg => {
+                if (msg.connects_to && msg.connections > 0) {
+                    currentConversationBranches[msg.id] = {
+                        connects_to: msg.connects_to,
+                        connections: msg.connections
+                    };
+                }
+            });
+        }
+        
+        function updateTreePathDisplay() {
+            // Disabled - user requested no branch display at the top
+            // Branch navigation is handled through message-level controls instead
+            return;
+        }
+        
+        async function returnToMainBranch() {
+            if (!currentSessionId) return;
+            
+            try {
+                const response = await makeAuthenticatedRequest(`/chatbot/message?session=${currentSessionId}`, {
+                    method: 'GET'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    currentTreePath = null;
+                    displayMessages(data.data || []);
+                    updateTreePathDisplay();
+                } else {
+                    showErrorMessage(data.message || 'Failed to return to main branch');
+                }
+            } catch (error) {
+                console.error('Return to main branch error:', error);
+                showErrorMessage('Failed to return to main branch. Please try again.');
+            }
+        }
+        
+        function getLastBotMessageFromCurrentBranch() {
+            const messages = document.querySelectorAll('.message.bot-message');
+            if (messages.length === 0) return null;
+            
+            const lastBotMessage = messages[messages.length - 1];
+            const messageId = lastBotMessage.dataset.messageId;
+            
+            if (messageId) {
+                return { id: messageId };
+            }
+            
+            return null;
+        }
+
+        function showSuccessMessage(message) {
+            // Remove any existing notifications
+            const existingNotification = document.querySelector('.success-notification');
+            if (existingNotification) {
+                existingNotification.remove();
+            }
+
+            // Create success notification
+            const successDiv = document.createElement('div');
+            successDiv.className = 'success-notification';
+            successDiv.innerHTML = `
+                <div class="success-content">
+                    <span class="success-icon">✅</span>
+                    <span class="success-text">${message}</span>
+                    <button class="success-close" onclick="this.parentElement.parentElement.remove()">×</button>
+                </div>
+            `;
+
+            // Insert at the top of chat container
+            const chatContainer = document.querySelector('.chat-container');
+            chatContainer.insertBefore(successDiv, chatContainer.firstChild);
+
+            // Auto-hide after 3 seconds
+            setTimeout(() => {
+                if (successDiv.parentNode) {
+                    successDiv.remove();
+                }
+            }, 3000);
         }
     </script>
 </body>

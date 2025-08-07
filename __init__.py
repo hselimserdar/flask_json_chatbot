@@ -1,15 +1,15 @@
-#init.py
 from flask import Flask, request, render_template, redirect
 from chatbot_manage import chat_with_gemini, create_session_for_user
 from user_process import compare_passwords, get_current_user, search_for_existing_user, add_new_user
-from db_utilities import delete_session_for_user, print_sessions, get_messages_for_session, is_session_owner
+from db_utilities import (get_user_id, get_messages_for_session, is_session_owner,
+                         delete_session_for_user, get_message_by_id, get_session_id_for_message,
+                         print_sessions)
 from dotenv import load_dotenv
 import os
 import jwt
 import datetime
 
 load_dotenv()
-
 
 debugging = os.getenv("debugging", "false").lower() == "true"
 flaskDebugging = os.getenv("flaskDebugging", "false").lower() == "true"
@@ -34,7 +34,7 @@ def login():
     if user:
         if debugging:
             print(f"Login called but user {user} already authenticated, redirecting")
-        return {"message" : "redirecting"} #redirect('/chatbot')    ##It will redirect to the chatbot page if the user is already authenticated - frontend will handle this
+        return {"message" : "redirecting"}
 
     data = request.get_json() or {}
     if debugging:
@@ -72,7 +72,7 @@ def register():
     if user:
         if debugging:
             print(f"Register called but user {user} already authenticated, redirecting")
-        return {"message" : "redirecting"} #redirect('/chatbot')    ##It will redirect to the chatbot page if the user is already authenticated - frontend will handle this
+        return {"message" : "redirecting"}
 
     data = request.get_json() or {}
     if debugging:
@@ -169,8 +169,9 @@ def delete_session():
 def session_messages():
     user = get_current_user() or "guest"
     session_id = request.args.get('session')
+    tree_path = request.args.get('tree')
     if debugging:
-        print(f"session_messages called by user={user}, session_id={session_id}")
+        print(f"session_messages called by user={user}, session_id={session_id}, tree_path={tree_path}")
     if not session_id or session_id == "" or session_id == "new":
         if debugging:
             print("No session ID provided in request")
@@ -189,13 +190,14 @@ def session_messages():
         else:
             if debugging:
                 print(f"User {user} is authorized to access messages in session: {session_id}")
-            return get_messages_for_session(session_id)
+            return get_messages_for_session(session_id, tree_path)
 
 @app.route('/chatbot', methods=['POST', 'GET'])
 def chatbot():
     user = get_current_user() or "guest"
     message = request.get_json().get('message')
     session_id = request.args.get('session')
+    parent_message_id = request.get_json().get('parent_message_id')
     if user == "guest":
         if not session_id == "guest":
             if debugging:
@@ -210,11 +212,22 @@ def chatbot():
         if not reply:
             if debugging:
                 print("Failed to get a reply from Gemini API")
-            return {"message": "Failed to get a reply from the API."}, 500            
+            return {"message": "Failed to get a reply from the API."}, 500
         return reply
     else:
         if debugging:
-            print(f"Chatbot accessed by user {user}, session_id={session_id}, message={message}")
+            print(f"Chatbot accessed by user {user}, session_id={session_id}, message={message}, parent_message_id={parent_message_id}")
+        
+        if parent_message_id:
+            actual_session_id = get_session_id_for_message(parent_message_id)
+            if not actual_session_id:
+                if debugging:
+                    print(f"Parent message {parent_message_id} not found")
+                return {"message": "Parent message not found."}, 404
+            if debugging:
+                print(f"Using session {actual_session_id} from parent message {parent_message_id}")
+            session_id = actual_session_id
+        
         if not session_id or session_id == "" or session_id == "new":
             if debugging:
                 print("No session ID provided, creating a new session")
@@ -233,20 +246,27 @@ def chatbot():
         else:
             if debugging:
                 print(f"User {user} is trying to access session: {session_id}")
+            
             if not is_session_owner(user, session_id):
                 if debugging:
                     print(f"User {user} is not authorized to access session: {session_id}")
                 return {"message": "Forbidden: You do not have access to this session."}, 403
-            reply = chat_with_gemini(user, message, session_id=session_id, first_message=False)
+            reply = chat_with_gemini(user, message, session_id=session_id, first_message=False, parent_message_id=parent_message_id)
             if not reply:
-                if debugging:
-                    print("Failed to get a reply from Gemini API for session:", session_id)
-                return {"message": "Failed to get a reply from the API."}, 500
+
+                if parent_message_id:
+                    if debugging:
+                        print(f"Branching failed for parent_message_id: {parent_message_id}")
+                    return {"message": "Forbidden: Cannot branch from the first message."}, 403
+                else:
+                    if debugging:
+                        print("Failed to get a reply from Gemini API for session:", session_id)
+                    return {"message": "Failed to get a reply from the API."}, 500
             return reply
 
 @app.route('/login')
 def login_page():
-    # Check if user is already authenticated
+
     user = get_current_user()
     if user:
         if debugging:
@@ -256,7 +276,7 @@ def login_page():
 
 @app.route('/register')
 def register_page():
-    # Check if user is already authenticated
+
     user = get_current_user()
     if user:
         if debugging:
@@ -266,7 +286,7 @@ def register_page():
 
 @app.route('/guest-chat')
 def guest_chat_page():
-    # Check if user is already authenticated
+
     user = get_current_user()
     if user:
         if debugging:
@@ -278,7 +298,7 @@ def guest_chat_page():
 def verify_token():
     """Verify JWT token and return user information"""
     try:
-        # Get token from Authorization header
+
         auth_header = request.headers.get('Authorization')
         if not auth_header or not auth_header.startswith('Bearer '):
             if debugging:
@@ -289,7 +309,6 @@ def verify_token():
         if debugging:
             print(f"Verifying token: {token[:20]}...")
         
-        # Decode the token
         try:
             payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'])
             username = payload.get('sub')
@@ -301,14 +320,12 @@ def verify_token():
                 print(f"Token issued at: {datetime.datetime.fromtimestamp(issued_at)}")
                 print(f"Token expires at: {datetime.datetime.fromtimestamp(expires_at)}")
             
-            # Check if user still exists in database
             user_exists = search_for_existing_user(username)
             if user_exists is None:
                 if debugging:
                     print(f"User {username} no longer exists in database")
                 return {"message": "User not found"}, 404
             
-            # Calculate time remaining and total lifetime
             current_time = datetime.datetime.now(datetime.timezone.utc)
             expires_datetime = datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc)
             issued_datetime = datetime.datetime.fromtimestamp(issued_at, datetime.timezone.utc)
@@ -316,7 +333,6 @@ def verify_token():
             time_remaining = expires_datetime - current_time
             total_lifetime = expires_datetime - issued_datetime
             
-            # Calculate percentage of lifetime remaining
             remaining_percentage = (time_remaining.total_seconds() / total_lifetime.total_seconds()) * 100
             
             return {
@@ -349,7 +365,7 @@ def verify_token():
 def refresh_token():
     """Refresh JWT token if it's still valid but near expiration"""
     try:
-        # Get token from Authorization header
+
         auth_header = request.headers.get('Authorization')
         if not auth_header or not auth_header.startswith('Bearer '):
             if debugging:
@@ -360,25 +376,23 @@ def refresh_token():
         if debugging:
             print(f"Refreshing token: {token[:20]}...")
         
-        # Decode the token (even if expired, we'll check if it's within grace period)
         try:
-            # First try normal decode
+
             payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'])
             username = payload.get('sub')
             
         except jwt.ExpiredSignatureError:
-            # If expired, try to decode without verification to check if it's within grace period
+
             try:
                 payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'], options={"verify_exp": False})
                 username = payload.get('sub')
                 expires_at = payload.get('exp')
                 
-                # Allow refresh up to 5 minutes after expiration
                 current_time = datetime.datetime.now(datetime.timezone.utc)
                 expires_datetime = datetime.datetime.fromtimestamp(expires_at, datetime.timezone.utc)
                 time_since_expiry = current_time - expires_datetime
                 
-                if time_since_expiry.total_seconds() > 300:  # 5 minutes = 300 seconds
+                if time_since_expiry.total_seconds() > 300:
                     if debugging:
                         print(f"Token expired too long ago: {time_since_expiry}")
                     return {"message": "Token expired too long ago, please log in again"}, 401
@@ -396,14 +410,12 @@ def refresh_token():
                 print(f"Invalid token error during refresh: {e}")
             return {"message": "Invalid token"}, 401
         
-        # Check if user still exists in database
         user_exists = search_for_existing_user(username)
         if user_exists is None:
             if debugging:
                 print(f"User {username} no longer exists in database during refresh")
             return {"message": "User not found"}, 404
         
-        # Generate new token with fresh expiration
         new_payload = {
             'sub': username,
             'iat': datetime.datetime.now(datetime.timezone.utc),
@@ -425,6 +437,65 @@ def refresh_token():
         if debugging:
             print(f"Token refresh error: {e}")
         return {"message": "Token refresh failed"}, 500
+
+@app.route('/chatbot/edit-message', methods=['POST'])
+def edit_message():
+    user = get_current_user() or "guest"
+    data = request.get_json() or {}
+    session_id = data.get('session_id')
+    message_id = data.get('message_id')
+    new_message = data.get('message')
+    
+    if debugging:
+        print(f"edit_message called by user={user}, session_id={session_id}, message_id={message_id}, new_message={new_message}")
+    
+    if user == "guest":
+        if debugging:
+            print("Guest user attempted to edit a message")
+        return {"message": "Forbidden: Guest users cannot edit messages."}, 403
+    
+    if not session_id or not message_id or not new_message:
+        if debugging:
+            print("Missing required parameters for message edit")
+        return {"message": "session_id, message_id, and message are required."}, 400
+    
+    if not is_session_owner(user, session_id):
+        if debugging:
+            print(f"User {user} is not authorized to edit messages in session: {session_id}")
+        return {"message": "Forbidden: You do not have access to this session."}, 403
+    
+    try:
+        from db_utilities import get_message_by_id
+        
+        original_message = get_message_by_id(message_id)
+        if not original_message:
+            if debugging:
+                print(f"Message {message_id} not found")
+            return {"message": "Message not found."}, 404
+        
+        if original_message['sender'] != 'user':
+            if debugging:
+                print(f"Attempted to edit non-user message {message_id}")
+            return {"message": "Only user messages can be edited."}, 400
+        
+        parent_message_id = original_message['connected_from']
+        if parent_message_id == 'main':
+            if debugging:
+                print(f"Attempted to edit root message {message_id}")
+            return {"message": "Root message cannot be edited."}, 400
+        
+        reply = chat_with_gemini(user, new_message, session_id=session_id, first_message=False, parent_message_id=parent_message_id)
+        if not reply:
+            if debugging:
+                print("Failed to get a reply from Gemini API for edited message")
+            return {"message": "Failed to get a reply from the API."}, 500
+        
+        return reply
+        
+    except Exception as e:
+        if debugging:
+            print(f"Error in edit_message: {e}")
+        return {"message": "Internal server error during message edit."}, 500
 
 @app.route('/chatbot.html')
 def chatbot_page():

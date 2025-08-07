@@ -22,19 +22,16 @@ def calculate_math(expression: str) -> Dict[str, Any]:
             print(f"MATH TOOL DEBUG - Starting calculation")
             print(f"   Original expression: '{expression}'")
         
-        # Clean the expression
         expression = expression.strip()
         
         if debugging:
             print(f"   Cleaned expression: '{expression}'")
         
-        # Create a safe environment for evaluation
         safe_dict = {
-            # Basic functions
+
             "abs": abs, "round": round, "min": min, "max": max,
             "sum": sum, "pow": pow,
             
-            # Math module functions
             "sqrt": math.sqrt, "sin": math.sin, "cos": math.cos, "tan": math.tan,
             "asin": math.asin, "acos": math.acos, "atan": math.atan,
             "log": math.log, "log10": math.log10, "exp": math.exp,
@@ -42,23 +39,19 @@ def calculate_math(expression: str) -> Dict[str, Any]:
             "degrees": math.degrees, "radians": math.radians,
             "factorial": math.factorial,
             
-            # Constants
             "pi": math.pi, "e": math.e,
             
-            # Prevent access to builtins
             "__builtins__": {}
         }
         
-        # Replace common math symbols with Python equivalents
         original_expr = expression
-        expression = expression.replace("^", "**")  # Power operator
-        expression = expression.replace("×", "*")   # Multiplication
-        expression = expression.replace("÷", "/")   # Division
+        expression = expression.replace("^", "**")
+        expression = expression.replace("×", "*")
+        expression = expression.replace("÷", "/")
         
         if debugging and original_expr != expression:
             print(f"   Symbol replacement: '{original_expr}' → '{expression}'")
         
-        # Evaluate the expression
         if debugging:
             print(f"   Evaluating with safe environment...")
         
@@ -117,25 +110,23 @@ def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
             print(f"   Query: '{query}'")
             print(f"   Max results: {num_results}")
         
-        # Clean and validate inputs
         original_query = query
         query = query.strip()
         
-        # Remove unnecessary search modifiers that confuse APIs
         search_prefixes = ["search", "find", "look for", "search for", "look up", "google"]
         query_lower = query.lower()
         
         for prefix in search_prefixes:
             patterns = [
-                f"{prefix} \"",  # search "something"
-                f"{prefix} '",   # search 'something'
-                f"{prefix} ",    # search something
+                f"{prefix} \"",
+                f"{prefix} '",
+                f"{prefix} ",
             ]
             for pattern in patterns:
                 if query_lower.startswith(pattern):
                     old_query = query
                     if pattern.endswith('"') or pattern.endswith("'"):
-                        # Handle quoted search terms
+
                         quote_char = pattern[-1]
                         if query.endswith(quote_char):
                             query = query[len(pattern):-1].strip()
@@ -148,7 +139,6 @@ def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
                         print(f"   Removed search prefix: '{old_query}' → '{query}'")
                     break
         
-        # Remove web-related suffixes
         web_suffixes = ["on the web", "in web", "on web", "online", "on internet"]
         for suffix in web_suffixes:
             if query_lower.endswith(suffix):
@@ -158,14 +148,13 @@ def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
                     print(f"   Removed web suffix: '{old_query}' → '{query}'")
                 break
         
-        # Remove quotes if they're just surrounding the entire query
         if query.startswith('"') and query.endswith('"') and query.count('"') == 2:
             old_query = query
             query = query[1:-1].strip()
             if debugging:
                 print(f"   Removed surrounding quotes: '{old_query}' → '{query}'")
         
-        num_results = max(1, min(num_results, 10))  # Limit between 1-10
+        num_results = max(1, min(num_results, 10))
         
         if not query:
             if debugging:
@@ -179,7 +168,6 @@ def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
         if debugging:
             print(f"   Final cleaned query: '{query}'")
         
-        # Strategy 1: Try DuckDuckGo Instant Answer API
         try:
             if debugging:
                 print(f"   Strategy 1: DuckDuckGo Instant Answer API")
@@ -198,7 +186,7 @@ def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
                 print(f"   Making request to: {ddg_url}")
                 print(f"   Parameters: {params}")
             
-            response = requests.get(ddg_url, params=params, timeout=8, 
+            response = requests.get(ddg_url, params=params, timeout=8,
                                   headers={'User-Agent': 'Mozilla/5.0 (compatible; SearchBot/1.0)'})
             
             if debugging:
@@ -214,9 +202,8 @@ def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
                         print(f"    JSON parsed successfully")
                         print(f"   Response keys: {list(data.keys())}")
                     
-                    # Check if this is a test response (avoid the "Just Another Test" issue)
                     meta = data.get('meta', {})
-                    if (meta.get('name') == 'Just Another Test' or 
+                    if (meta.get('name') == 'Just Another Test' or
                         meta.get('id') == 'just_another_test' or
                         meta.get('production_state') == 'offline'):
                         if debugging:
@@ -225,7 +212,6 @@ def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
                     
                     results = []
                     
-                    # Check for instant answer
                     if data.get("AbstractText") and len(data.get("AbstractText", "").strip()) > 10:
                         if debugging:
                             print(f"   Found instant answer: {data.get('Heading', 'No heading')}")
@@ -236,7 +222,6 @@ def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
                             "source": "DuckDuckGo Instant Answer"
                         })
                     
-                    # Check for definition
                     if data.get("Definition") and len(data.get("Definition", "").strip()) > 10:
                         if debugging:
                             print(f"   Found definition")
@@ -247,7 +232,6 @@ def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
                             "source": "DuckDuckGo Definition"
                         })
                     
-                    # Check for related topics
                     related_topics = data.get("RelatedTopics", [])
                     if related_topics:
                         if debugging:
@@ -255,11 +239,10 @@ def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
                         for i, topic in enumerate(related_topics[:num_results-len(results)]):
                             if isinstance(topic, dict) and topic.get("Text"):
                                 text = topic.get("Text", "")
-                                if len(text.strip()) > 20:  # Only meaningful content
+                                if len(text.strip()) > 20:
                                     if debugging:
                                         print(f"     Topic {i+1}: {text[:50]}...")
                                     
-                                    # Extract title from Result field or use query
                                     title = query.title()
                                     if topic.get("Result"):
                                         result_text = topic.get("Result", "")
@@ -275,7 +258,6 @@ def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
                                         "source": "DuckDuckGo Related"
                                     })
                     
-                    # If we got meaningful results, return them
                     if results:
                         if debugging:
                             print(f"    STRATEGY 1 SUCCESS: Found {len(results)} results")
@@ -297,23 +279,19 @@ def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
                 except ValueError as json_error:
                     if debugging:
                         print(f"    Strategy 1 JSON ERROR: {json_error}")
-                    # Continue to next strategy
-        
+
         except (requests.RequestException, ValueError) as e:
             if debugging:
                 print(f"    Strategy 1 ERROR: {e}")
         
-        # Strategy 2: Enhanced domain-specific search for websites
         if any(tld in query.lower() for tld in ['.com', '.org', '.net', '.edu', '.gov', '.io', '.co']):
             if debugging:
                 print(f"   Strategy 2: Domain-specific search")
             
-            # Extract domain name
             domain_match = re.search(r'([a-zA-Z0-9-]+\.(?:com|org|net|edu|gov|io|co|uk|de|fr|tr))', query.lower())
             if domain_match:
                 domain = domain_match.group(1)
                 
-                # Create domain-specific results
                 results = [
                     {
                         "title": f"Visit {domain}",
@@ -341,14 +319,12 @@ def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
                     "source": "Domain-specific search"
                 }
         
-        # Strategy 3: Enhanced fallback with intelligent guidance
         if debugging:
             print(f"   Strategy 3: Enhanced fallback guidance")
         
         fallback_message = f"I would search for '{query}' but don't have access to live web search at the moment."
         search_suggestions = []
         
-        # Provide specific guidance based on query type
         query_lower = query.lower()
         
         if any(term in query_lower for term in ["exchange rate", "currency", "usd", "try", "eur", "gbp", "bitcoin", "crypto"]):
@@ -406,7 +382,6 @@ def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
                 "Specialized search engines for your topic"
             ]
         
-        # Format the suggestions
         if search_suggestions:
             fallback_message += "\n• " + "\n• ".join(search_suggestions)
         
@@ -451,7 +426,6 @@ def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
             "success": False
         }
 
-# Tool definitions for Gemini API
 AVAILABLE_TOOLS = [
     {
         "function_declarations": [
@@ -493,7 +467,6 @@ AVAILABLE_TOOLS = [
     }
 ]
 
-# Function mapping for tool execution
 TOOL_FUNCTIONS = {
     "calculate_math": calculate_math,
     "search_web": search_web

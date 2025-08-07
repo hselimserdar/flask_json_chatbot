@@ -1,4 +1,4 @@
-#user_process.py
+
 import base64
 import hashlib
 import hmac
@@ -12,7 +12,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 debugging = os.getenv("debugging", "false").lower() == "true"
-
 
 def get_current_user():
     auth = request.headers.get('Authorization', '')
@@ -52,7 +51,6 @@ def encrypt_password(user_key, input_password):
     ).digest()
     return base64.urlsafe_b64encode(tag).decode('ascii')
 
-
 def compare_passwords(username, input_password):
     conn = sqlite3.connect('database.sqlite')
     cur = conn.cursor()
@@ -72,7 +70,6 @@ def compare_passwords(username, input_password):
         cur.close()
         conn.close()
 
-
 def search_for_existing_user(username):
     conn = sqlite3.connect('database.sqlite')
     cur = conn.cursor()
@@ -87,7 +84,6 @@ def search_for_existing_user(username):
         cur.close()
         conn.close()
     return None
-
 
 def add_new_user(username, password):
     conn = sqlite3.connect('database.sqlite')

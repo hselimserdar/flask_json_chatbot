@@ -39,7 +39,7 @@
             <main class="chat-main">
                 <div id="chatMessages" class="chat-messages">
                     <div class="welcome-message">
-                        <h3>Welcome to Guest Mode! 👋</h3>
+                        <h3>Welcome to Guest Mode!</h3>
                         <p>You can chat with HSS GPT, but your conversation won't be saved.</p>
                         <p><strong>Sign up</strong> to save your conversations and access more features!</p>
                     </div>
@@ -80,6 +80,7 @@
                 const currentTime = Math.floor(Date.now() / 1000);
                 return payload.exp > currentTime;
             } catch (error) {
+                console.error('Token validation error:', error);
                 return false;
             }
         }
