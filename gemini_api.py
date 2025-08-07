@@ -84,8 +84,8 @@ def call_gemini_api(
                 print(f"   Analyzing message: '{user_message}'")
             
             search_keywords = [
-                "search web", "web search", "search for", "look up",
-                "find information", "current", "latest", "recent",
+                "search web", "web search", "search for", "look up", 
+                "find information", "current", "latest", "recent", 
                 "what is the", "exchange rate", "news about", "information about",
                 "find", "currency rate", "search", "on web", "search meaning",
                 "find meaning", "what does", "meaning of", "whats"
@@ -156,9 +156,9 @@ def call_gemini_api(
                         if "Current message:" in full_message:
 
                             enhanced_message = re.sub(
-                                r"(Current message:\s*)(.+?)(\n\n.*)?$",
-                                f"\\1{user_message}\\n\\nSearch results:\\n{search_info}\\n\\nPlease provide a helpful response based on this information.\\3",
-                                full_message,
+                                r"(Current message:\s*)(.+?)(\n\n.*)?$", 
+                                f"\\1{user_message}\\n\\nSearch results:\\n{search_info}\\n\\nPlease provide a helpful response based on this information.\\3", 
+                                full_message, 
                                 flags=re.DOTALL
                             )
                         else:
@@ -205,7 +205,7 @@ def call_gemini_api(
                     
                     original_expression = expression
                     expression = expression.replace("times", "*")
-                    expression = expression.replace("multiplied by", "*")
+                    expression = expression.replace("multiplied by", "*") 
                     expression = expression.replace("plus", "+")
                     expression = expression.replace("minus", "-")
                     expression = expression.replace("divided by", "/")

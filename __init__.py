@@ -1,8 +1,8 @@
 from flask import Flask, request, render_template, redirect
 from chatbot_manage import chat_with_gemini, create_session_for_user
 from user_process import compare_passwords, get_current_user, search_for_existing_user, add_new_user
-from db_utilities import (get_user_id, get_messages_for_session, is_session_owner,
-                         delete_session_for_user, get_message_by_id, get_session_id_for_message,
+from db_utilities import (get_messages_for_session, is_session_owner,
+                         delete_session_for_user, get_session_id_for_message,
                          print_sessions)
 from dotenv import load_dotenv
 import os

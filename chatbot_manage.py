@@ -16,7 +16,15 @@ def chat_with_gemini(username, message, session_id=None, first_message=False, pa
     if stateful:
         if first_message:
             first_prompt = [
-                {"author": "user", "content": "You are a helpful assistant. Please respond to this message: " + message}
+                {"author": "user", "content": f"You are a helpful assistant. Please respond to this message: {message}\n\n"
+                                              f"**FORMATTING GUIDELINES:**\n"
+                                              f"- When displaying lists, use consistent bullet points (* or -)\n"
+                                              f"- Each list item should be on its own line\n"
+                                              f"- Use the same formatting style throughout your response\n"
+                                              f"- Example format for lists:\n"
+                                              f"* item 1\n"
+                                              f"* item 2\n"
+                                              f"* item 3"}
             ]
             try:
                 reply = call_gemini_api(first_prompt, use_tools=True)
@@ -24,12 +32,16 @@ def chat_with_gemini(username, message, session_id=None, first_message=False, pa
                 summary_prompt = [
                     {"author": "user", "content": f"User asked: {message}"},
                     {"author": "assistant", "content": f"I responded: {reply}"},
-                    {"author": "user", "content": "Give me a summary of this conversation so far. "
-                                                  "Do not skip important details while keeping it concise. "
-                                                  "Especially technical details, if they exist. "
-                                                  "Also note the preferred language if mentioned. "
-                                                  "Keep the last code if you answered with code to make adjustments on the next message. "
-                                                  "I will use this as context for the next message."}
+                    {"author": "user", "content": "Create a comprehensive summary of this conversation that preserves ALL important information. Include:\n"
+                                                  "1. **Personal Information**: User's name, preferences, interests, goals, or any personal details mentioned\n"
+                                                  "2. **Tasks & Lists**: Shopping lists, to-do items, reminders, planned activities, or any lists the user created\n"
+                                                  "3. **Ongoing Projects**: Work projects, creative endeavors, learning goals, or any multi-session activities\n"
+                                                  "4. **Technical Details**: Code snippets, configurations, specific commands, or technical solutions\n"
+                                                  "5. **Context & Preferences**: Preferred language, communication style, specific requirements mentioned\n"
+                                                  "6. **Important Facts**: Key information, decisions made, or significant details that should be remembered\n\n"
+                                                  "7. **Code**: Keep the last code if you answered with code to make adjustments on the next message.\n\n"
+                                                  "Format the summary clearly with sections. This summary will be used as context for future messages, "
+                                                  "so it's crucial that personal information like lists, tasks, and user preferences are preserved exactly."}
                 ]
                 summary = call_gemini_api(summary_prompt, use_tools=False)
                 if debugging:
@@ -94,26 +106,50 @@ def chat_with_gemini(username, message, session_id=None, first_message=False, pa
             session_title = get_title_for_session(session_id)
             
             prompt = [
-                {"author": "user", "content": f"Context - Title: {session_title}\n"
-                                              f"Summary: {session_summary}\n"
-                                              f"Current message: {message}\n\n"
-                                              f"Please respond naturally to the current message using the context provided. "
-                                              f"Don't refer to the summary or title unless relevant."}
+                {"author": "user", "content": f"**CONVERSATION CONTEXT**\n"
+                                              f"Session Title: {session_title}\n\n"
+                                              f"**Previous Conversation Summary:**\n{session_summary}\n\n"
+                                              f"**Current User Message:** {message}\n\n"
+                                              f"Please respond naturally to the current message while keeping all previous context in mind. "
+                                              f"Pay special attention to any personal information, lists, tasks, or ongoing projects mentioned in the summary. "
+                                              f"If the user references something from our previous conversation (like a shopping list, task, or personal detail), "
+                                              f"acknowledge it and build upon it. Do not ask the user to repeat information that's already in the context.\n\n"
+                                              f"**FORMATTING GUIDELINES:**\n"
+                                              f"- When displaying lists, use consistent bullet points (- or *)\n"
+                                              f"- Each list item should be on its own line\n"
+                                              f"- Use the same formatting style throughout your response\n"
+                                              f"- Example format for lists:\n"
+                                              f"* item 1\n"
+                                              f"* item 2\n"
+                                              f"* item 3"}
             ]
 
             try:
                 reply = call_gemini_api(prompt, use_tools=True)
                 
+                # Use branch-specific summary context when creating new summary
+                if parent_message_id:
+                    # For branches, use the parent message's summary as the base context
+                    parent_summary = get_summary_for_message_branch(parent_message_id)
+                    summary_context = f"Previous branch context: {parent_summary}\n"
+                else:
+                    # For regular conversation continuation, use session summary
+                    summary_context = f"Previous context: {session_summary}\n"
+                
                 summary_prompt = [
-                    {"author": "user", "content": f"Previous context: {session_summary}\n"
+                    {"author": "user", "content": f"Previous context: {summary_context}"
                                                   f"User just said: {message}\n"
                                                   f"I responded: {reply}\n\n"},
-                    {"author": "user", "content": "Give me a summary of this conversation so far. "
-                                                  "Do not skip important details while keeping it concise. "
-                                                  "Especially technical details, if they exist. "
-                                                  "Also note the preferred language if mentioned. "
-                                                  "Keep the last code if you answered with code to make adjustments on the next message. "
-                                                  "I will use this as context for the next message."}
+                    {"author": "user", "content": "Create a comprehensive summary of this conversation that preserves ALL important information. Include:\n"
+                                                  "1. **Personal Information**: User's name, preferences, interests, goals, or any personal details mentioned\n"
+                                                  "2. **Tasks & Lists**: Shopping lists, to-do items, reminders, planned activities, or any lists the user created\n"
+                                                  "3. **Ongoing Projects**: Work projects, creative endeavors, learning goals, or any multi-session activities\n"
+                                                  "4. **Technical Details**: Code snippets, configurations, specific commands, or technical solutions\n"
+                                                  "5. **Context & Preferences**: Preferred language, communication style, specific requirements mentioned\n"
+                                                  "6. **Important Facts**: Key information, decisions made, or significant details that should be remembered\n\n"
+                                                  "7. **Code**: Keep the last code if you answered with code to make adjustments on the next message.\n\n"
+                                                  "Format the summary clearly with sections. This summary will be used as context for future messages, "
+                                                  "so it's crucial that personal information like lists, tasks, and user preferences are preserved exactly."}
                 ]
                 summary = call_gemini_api(summary_prompt, use_tools=False)
             except Exception as e:

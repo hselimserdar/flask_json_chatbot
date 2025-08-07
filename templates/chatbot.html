@@ -1207,17 +1207,22 @@
 
             // 3) Markdown → HTML on non-code text
             text = text
-                // bold
+                // First handle list items (before italic processing to avoid conflicts)
+                .replace(/^\s*[-*•]\s+(.+)$/gm, "<li>$1</li>")
+                // Wrap consecutive list items in <ul> tags
+                .replace(/(<li>.*?<\/li>)(\s*<li>.*?<\/li>)*/gs, m => {
+                    // Remove any existing <ul> wrapping first
+                    const cleanedList = m.replace(/<\/?ul>/g, '');
+                    return `<ul>${cleanedList}</ul>`;
+                })
+                // Bold (do this before italics to avoid conflicts)
                 .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
                 .replace(/__(.*?)__/g, "<strong>$1</strong>")
-                // italics (avoid ** conflict)
-                .replace(/(^|[^*])\*([^*\n][^*]*?)\*(?!\*)/g, "$1<em>$2</em>")
-                .replace(/(^|[^_])_([^_\n][^_]*?)_(?!_)/g, "$1<em>$2</em>")
-                // bullets
-                .replace(/^\s*[-*]\s+(.+)$/gm, "<li>$1</li>")
-                .replace(/(<li>.*<\/li>)+/gs, m => `<ul>${m}</ul>`)
-                // finally turn newlines into <br>
-                .replace(/\n/g, "<br>");
+                // Italics (more careful pattern to avoid conflicts with bullets)
+                .replace(/(^|[^*])\*([^*\n][^*]*?[^*])\*(?!\*)/g, "$1<em>$2</em>")
+                .replace(/(^|[^_])_([^_\n][^_]*?[^_])_(?!_)/g, "$1<em>$2</em>")
+                // Convert newlines to <br> (but not inside lists)
+                .replace(/\n(?!<\/?(ul|li))/g, "<br>");
 
             // 4) Restore each code block, escaping its interior but leaving its newlines
             codeBlocks.forEach(({ lang, code }, i) => {
