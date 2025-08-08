@@ -32,33 +32,6 @@ The Gemini API key is required for AI-powered conversations and tool calling fea
 - Supports text generation, conversation, and tool calling
 - No billing setup required for basic usage
 
-### 2. Secret Key for JWT Authentication
-
-The SECRET_KEY is used for secure JWT token generation and session management.
-
-#### How to Generate a Secure Secret Key:
-
-**Option 1: Python (Recommended)**
-```python
-import secrets
-print(secrets.token_urlsafe(32))
-```
-
-**Option 2: OpenSSL Command Line**
-```bash
-openssl rand -base64 32
-```
-
-**Option 3: Online Generator**
-- Use a secure online generator like [https://randomkeygen.com/](https://randomkeygen.com/)
-- Choose "CodeIgniter Encryption Keys" or similar 32+ character option
-
-#### Secret Key Requirements:
-- Should be at least 32 characters long
-- Use random, unpredictable characters
-- Keep it secret and never commit to version control
-- Generate a new one for each deployment environment
-
 ## Environment Configuration
 
 ### 1. Create Environment File
@@ -69,10 +42,9 @@ openssl rand -base64 32
    ```
 
 2. **Edit the .env File**
-   Open `.env` in your text editor and add your keys:
+   Open `.env` in your text editor and add your key:
    ```
    GEMINI_API_KEY=your_actual_gemini_api_key_here
-   SECRET_KEY=your_generated_secret_key_here
    ```
 
 ### 2. Optional Environment Variables
@@ -99,7 +71,6 @@ Here's what your complete `.env` file should look like:
 ```
 # Required API Keys
 GEMINI_API_KEY=AIzaSyC1234567890abcdefghijklmnopqrstuvwxyz
-SECRET_KEY=Kd8fJls9fj2LmPqR7vN4yBx3Wz6AeH2rT9mQ5kL8pX1nC4vS
 
 # Optional Server Configuration
 flaskIP=127.0.0.1
@@ -109,7 +80,7 @@ flaskPort=5000
 debugging=false
 flaskDebugging=false
 
-# JWT Secret (can be same as SECRET_KEY)
+# JWT Secret (for secure authentication)
 JWT_SECRET_KEY=Kd8fJls9fj2LmPqR7vN4yBx3Wz6AeH2rT9mQ5kL8pX1nC4vS
 ```
 
@@ -144,8 +115,7 @@ JWT_SECRET_KEY=Kd8fJls9fj2LmPqR7vN4yBx3Wz6AeH2rT9mQ5kL8pX1nC4vS
    - Try regenerating the API key if needed
 
 3. **JWT token errors**
-   - Verify your SECRET_KEY is set and at least 32 characters
-   - Check that JWT_SECRET_KEY is configured
+   - Verify your JWT_SECRET_KEY is set and at least 32 characters
    - Clear browser cookies and try again
 
 4. **Import errors for python-dotenv**

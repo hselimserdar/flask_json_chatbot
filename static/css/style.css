@@ -1481,6 +1481,7 @@ footer {
     position: relative;
 }
 
+/* Removed colored line indicator for messages with branches
 .message.has-branches::after {
     content: '';
     position: absolute;
@@ -1493,6 +1494,7 @@ footer {
     border-radius: 2px;
     opacity: 0.6;
 }
+*/
 
 /* Responsive design for ChatGPT-style controls */
 @media (max-width: 768px) {
@@ -1517,6 +1519,20 @@ footer {
     .user-edit-controls {
         opacity: 1; /* Always show on mobile */
     }
+    
+    /* Inline editing mobile styles */
+    .inline-edit-buttons {
+        position: static;
+        margin-top: 0.5rem;
+        justify-content: flex-end;
+    }
+    
+    .inline-edit-send,
+    .inline-edit-cancel {
+        width: 32px;
+        height: 32px;
+        font-size: 1rem;
+    }
 }
 
 @media (max-width: 480px) {
@@ -1528,6 +1544,16 @@ footer {
     .branch-counter {
         font-size: 0.75rem;
         min-width: 1.5rem;
+    }
+    
+    /* Inline editing very small screen styles */
+    .inline-edit-textarea {
+        padding: 0.5rem;
+        font-size: 0.9rem;
+    }
+    
+    .inline-edit-buttons {
+        gap: 0.5rem;
     }
 }
 
@@ -1580,11 +1606,122 @@ footer {
     background-color: rgba(5, 150, 105, 0.1);
 }
 
-/* Enhanced message styles for branching */
+/* Inline editing styles */
+.inline-edit-container {
+    width: 100%;
+    position: relative;
+}
+
+.inline-edit-textarea {
+    width: 100%;
+    background-color: rgba(255, 255, 255, 0.98) !important;
+    color: var(--text-primary) !important;
+    border: 2px solid var(--primary-color);
+    border-radius: var(--radius-md);
+    padding: 0.75rem;
+    font-family: inherit;
+    font-size: 1rem;
+    line-height: 1.5;
+    resize: none;
+    outline: none;
+    min-height: 44px;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+    z-index: 10;
+    position: relative;
+}
+
+.inline-edit-textarea:focus {
+    border-color: var(--primary-hover);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+
+.inline-edit-buttons {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    display: flex;
+    gap: 0.25rem;
+}
+
+.inline-edit-send,
+.inline-edit-cancel {
+    width: 28px;
+    height: 28px;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 0.875rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    box-shadow: var(--shadow-sm);
+}
+
+.inline-edit-send {
+    background-color: var(--success-color);
+    color: white;
+}
+
+.inline-edit-send:hover {
+    background-color: #047857;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.inline-edit-cancel {
+    background-color: var(--error-color);
+    color: white;
+}
+
+.inline-edit-cancel:hover {
+    background-color: #b91c1c;
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-md);
+}
+
+.inline-edit-loading {
+    padding: 0.75rem;
+    text-align: center;
+    color: var(--text-secondary);
+    font-style: italic;
+    background-color: rgba(255, 255, 255, 0.9);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+}
+
+/* For user messages, ensure edit interface has proper contrast */
+.user-message .inline-edit-textarea {
+    background-color: rgba(255, 255, 255, 0.98) !important;
+    color: #1e293b !important;
+    border: 2px solid var(--primary-color) !important;
+}
+
+.user-message .inline-edit-loading {
+    background-color: rgba(255, 255, 255, 0.95);
+    color: #1e293b !important;
+    border: 1px solid var(--border-color);
+}
+
+/* Ensure buttons are visible in user messages */
+.user-message .inline-edit-send {
+    background-color: var(--success-color) !important;
+    color: white !important;
+}
+
+.user-message .inline-edit-cancel {
+    background-color: var(--error-color) !important;
+    color: white !important;
+}
+
+/* Removed border from bot messages with branches
 .bot-message.has-branches {
     border-left: 3px solid var(--success-color);
 }
+*/
 
+/* Removed colored line for branch messages
 .message.branch-message {
     position: relative;
 }
@@ -1599,6 +1736,7 @@ footer {
     background: linear-gradient(to bottom, var(--info-color), var(--success-color));
     border-radius: 2px;
 }
+*/
 
 /* Responsive design for branching elements */
 @media (max-width: 768px) {
