@@ -4,7 +4,7 @@ import sqlite3
 import os
 from dotenv import load_dotenv
 from gemini_api import call_gemini_api
-from db_utilities import get_user_id, get_title_for_session, get_summary_for_session, get_summary_for_message_branch, get_message_connected_from, get_message_by_id
+from db_utilities import get_user_id, get_title_for_session, get_summary_for_session, get_summary_for_message_branch, get_message_connected_from, get_message_by_id, update_session_last_change
 
 load_dotenv()
 debugging = os.getenv("debugging", "false").lower() == "true"
@@ -103,6 +103,9 @@ def chat_with_gemini(username, message, session_id=None, first_message=False, pa
                 bot_msg_id = add_message_to_session(session_id, "bot", reply, summary, str(user_msg_id), "", 0)
                 update_message_connections(user_msg_id, str(bot_msg_id))
                 update_session_title(session_id, generated_title)
+                
+                # Update session's lastChangeMade timestamp
+                update_session_last_change(session_id)
                 
                 user_message_data = get_message_by_id(user_msg_id)
                 bot_message_data = get_message_by_id(bot_msg_id)
@@ -249,6 +252,9 @@ def chat_with_gemini(username, message, session_id=None, first_message=False, pa
                         
                         update_message_connections(new_user_msg_id, str(bot_msg_id))
                         
+                        # Update session's lastChangeMade timestamp for branch creation
+                        update_session_last_change(session_id)
+                        
                         if debugging:
                             print(f"Created branch: user {new_user_msg_id} -> bot {bot_msg_id}")
                         
@@ -273,10 +279,18 @@ def chat_with_gemini(username, message, session_id=None, first_message=False, pa
                 else:
 
                     connected_from = get_last_message_id_for_session(session_id)
+                    if connected_from is None:
+                        if debugging:
+                            print(f"No previous messages found for session {session_id}, cannot continue conversation")
+                        return None
+                    
                     user_msg_id = add_message_to_session(session_id, "user", message, "", str(connected_from), "", 0)
                     bot_msg_id = add_message_to_session(session_id, "bot", reply, summary, str(user_msg_id), "", 0)
                     update_message_connections(connected_from, str(user_msg_id))
                     update_message_connections(user_msg_id, str(bot_msg_id))
+                    
+                    # Update session's lastChangeMade timestamp
+                    update_session_last_change(session_id)
                     
                     user_message_data = get_message_by_id(user_msg_id)
                     bot_message_data = get_message_by_id(bot_msg_id)
@@ -346,16 +360,20 @@ def create_session_for_user(username, title=None):
                 print(f"User '{username}' not found; cannot create session.")
             return None
         user_id = row[0]
+        
+        # Set initial lastChangeMade timestamp
+        current_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        
         cur.execute(
-            "INSERT INTO session (user_id, title, isDeleted) VALUES (?, ?, ?)",
-            (user_id, title, 'FALSE')
+            "INSERT INTO session (user_id, title, lastChangeMade, isDeleted) VALUES (?, ?, ?, ?)",
+            (user_id, title, current_time, 'FALSE')
         )
         conn.commit()
         session_id = cur.lastrowid
         if debugging:
             print(
                 f"Created session id={session_id} for username='{username}' "
-                f"(user_id={user_id}) with isDeleted='FALSE'"
+                f"(user_id={user_id}) with lastChangeMade={current_time} and isDeleted='FALSE'"
             )
         return session_id
 

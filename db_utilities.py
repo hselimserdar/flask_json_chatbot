@@ -118,7 +118,7 @@ def print_sessions(username, page):
         cur.execute(
             "SELECT id, title FROM session "
             "WHERE user_id = ? AND isDeleted = 'FALSE' "
-            "ORDER BY id DESC LIMIT ? OFFSET ?",
+            "ORDER BY lastChangeMade DESC, id DESC LIMIT ? OFFSET ?",
             (user_id, per_page, offset)
         )
         session_rows = cur.fetchall()
@@ -621,6 +621,68 @@ def get_session_id_for_message(message_id):
         if debugging:
             print("SQLite error in get_session_id_for_message:", e)
         return None
+    finally:
+        cur.close()
+        conn.close()
+
+def update_session_last_change(session_id):
+    """Update the lastChangeMade timestamp for a session"""
+    conn = sqlite3.connect('database.sqlite')
+    conn.execute('PRAGMA foreign_keys = ON;')
+    cur = conn.cursor()
+    try:
+        current_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        cur.execute(
+            "UPDATE session SET lastChangeMade = ? WHERE id = ?",
+            (current_time, session_id)
+        )
+        conn.commit()
+        if debugging:
+            print(f"Updated lastChangeMade for session {session_id} to {current_time}")
+        return cur.rowcount == 1
+    except sqlite3.Error as e:
+        if debugging:
+            print("SQLite error in update_session_last_change:", e)
+        return False
+    finally:
+        cur.close()
+        conn.close()
+
+def initialize_missing_last_change_timestamps():
+    """Initialize lastChangeMade for existing sessions that have NULL values"""
+    conn = sqlite3.connect('database.sqlite')
+    conn.execute('PRAGMA foreign_keys = ON;')
+    cur = conn.cursor()
+    try:
+        # Get sessions with NULL lastChangeMade and their first message timestamp
+        cur.execute("""
+            SELECT s.id, MIN(m.created_at) as first_message_time
+            FROM session s
+            LEFT JOIN message m ON s.id = m.session_id
+            WHERE s.lastChangeMade IS NULL AND s.isDeleted = 'FALSE'
+            GROUP BY s.id
+        """)
+        sessions_to_update = cur.fetchall()
+        
+        updated_count = 0
+        for session_id, first_message_time in sessions_to_update:
+            # Use first message time if available, otherwise current time
+            timestamp = first_message_time or datetime.datetime.now(datetime.timezone.utc).isoformat()
+            
+            cur.execute(
+                "UPDATE session SET lastChangeMade = ? WHERE id = ?",
+                (timestamp, session_id)
+            )
+            updated_count += 1
+        
+        conn.commit()
+        if debugging:
+            print(f"Initialized lastChangeMade for {updated_count} sessions")
+        return updated_count
+    except sqlite3.Error as e:
+        if debugging:
+            print("SQLite error in initialize_missing_last_change_timestamps:", e)
+        return 0
     finally:
         cur.close()
         conn.close()

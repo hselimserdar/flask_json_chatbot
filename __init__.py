@@ -3,11 +3,12 @@ from chatbot_manage import chat_with_gemini, create_session_for_user
 from user_process import compare_passwords, get_current_user, search_for_existing_user, add_new_user
 from db_utilities import (get_messages_for_session, is_session_owner,
                          delete_session_for_user, get_session_id_for_message,
-                         print_sessions)
+                         print_sessions, get_user_id, update_session_last_change)
 from dotenv import load_dotenv
 import os
 import jwt
 import datetime
+import sqlite3
 
 load_dotenv()
 
@@ -195,9 +196,19 @@ def session_messages():
 @app.route('/chatbot', methods=['POST', 'GET'])
 def chatbot():
     user = get_current_user() or "guest"
-    message = request.get_json().get('message')
+    
+    # Safe JSON parsing to prevent NoneType errors
+    json_data = request.get_json() or {}
+    message = json_data.get('message')
+    parent_message_id = json_data.get('parent_message_id')
     session_id = request.args.get('session')
-    parent_message_id = request.get_json().get('parent_message_id')
+    
+    # Validate message content
+    if not message or not message.strip():
+        if debugging:
+            print("Empty or missing message received")
+        return {"message": "Message content is required."}, 400
+    
     if user == "guest":
         if not session_id == "guest":
             if debugging:
@@ -496,6 +507,105 @@ def edit_message():
         if debugging:
             print(f"Error in edit_message: {e}")
         return {"message": "Internal server error during message edit."}, 500
+
+@app.route('/chatbot/save-tree-path', methods=['POST'])
+def save_tree_path():
+    try:
+        user = get_current_user() or "guest"
+        
+        if user == "guest":
+            return {"error": "Forbidden: Guest users cannot save tree paths."}, 403
+        
+        data = request.get_json() or {}
+        session_id = data.get('session_id')
+        tree_path = data.get('tree_path')
+        
+        if not session_id or not tree_path:
+            return {"error": "Missing session_id or tree_path"}, 400
+        
+        # Verify user owns the session
+        user_id = get_user_id(user)
+        
+        # Get database connection
+        conn = sqlite3.connect('database.sqlite')
+        cursor = conn.cursor()
+        
+        # Check if session belongs to user
+        cursor.execute(
+            "SELECT id FROM session WHERE id = ? AND user_id = ?",
+            (session_id, user_id)
+        )
+        
+        if not cursor.fetchone():
+            conn.close()
+            return {"error": "Session not found or access denied"}, 403
+        
+        # Update both lastTreeUserViewed and lastChangeMade in single transaction
+        current_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
+        cursor.execute(
+            "UPDATE session SET lastTreeUserViewed = ?, lastChangeMade = ? WHERE id = ? AND user_id = ?",
+            (tree_path, current_time, session_id, user_id)
+        )
+        
+        conn.commit()
+        conn.close()
+        
+        if debugging:
+            print(f"Tree path saved for session {session_id}: {tree_path}")
+        
+        return {"success": True, "message": "Tree path saved successfully"}, 200
+        
+    except Exception as e:
+        if debugging:
+            print(f"Error saving tree path: {str(e)}")
+        return {"error": f"Failed to save tree path: {str(e)}"}, 500
+
+@app.route('/chatbot/get-tree-path', methods=['GET'])
+def get_tree_path():
+    try:
+        user = get_current_user() or "guest"
+        
+        if user == "guest":
+            return {"error": "Forbidden: Guest users cannot access tree paths."}, 403
+        
+        session_id = request.args.get('session')
+        
+        if not session_id:
+            return {"error": "Missing session parameter"}, 400
+        
+        # Verify user owns the session
+        user_id = get_user_id(user)
+        
+        # Get database connection
+        conn = sqlite3.connect('database.sqlite')
+        cursor = conn.cursor()
+        
+        # Get the lastTreeUserViewed for the session
+        cursor.execute(
+            "SELECT lastTreeUserViewed FROM session WHERE id = ? AND user_id = ?",
+            (session_id, user_id)
+        )
+        
+        result = cursor.fetchone()
+        conn.close()
+        
+        if not result:
+            return {"error": "Session not found or access denied"}, 403
+        
+        tree_path = result[0]
+        
+        if debugging:
+            print(f"Retrieved tree path for session {session_id}: {tree_path}")
+        
+        return {
+            "tree_path": tree_path,
+            "session_id": session_id
+        }, 200
+        
+    except Exception as e:
+        if debugging:
+            print(f"Error retrieving tree path: {str(e)}")
+        return {"error": f"Failed to retrieve tree path: {str(e)}"}, 500
 
 @app.route('/chatbot.html')
 def chatbot_page():

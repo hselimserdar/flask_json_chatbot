@@ -875,14 +875,9 @@
             const sessionsList = document.getElementById('sessionsList');
             sessionsList.innerHTML = '';
 
-            // Sort sessions by created_at in descending order (newest first)
-            const sortedSessions = sessions.sort((a, b) => {
-                const dateA = new Date(a.created_at || 0);
-                const dateB = new Date(b.created_at || 0);
-                return dateB - dateA; // Newest first
-            });
-
-            sortedSessions.forEach(session => {
+            // Sessions are already sorted by lastChangeMade DESC from backend
+            // No need to re-sort in frontend
+            sessions.forEach(session => {
                 const sessionDiv = document.createElement('div');
                 sessionDiv.className = 'session-item';
                 sessionDiv.setAttribute('data-session-id', session.id);
@@ -1015,10 +1010,33 @@
                     const messages = data.data || [];
                     currentSessionMessages = messages;
                     
-                    // Calculate the default tree path for the main conversation branch
-                    if (messages.length > 0) {
-                        currentTreePath = calculateMainTreePath(messages);
-                        // Calculated main tree path
+                    // Try to retrieve the last tree path user viewed for this session
+                    const savedTreePath = await getLastTreePath(sessionId);
+                    
+                    if (savedTreePath && messages.length > 0) {
+                        // Validate that the saved tree path is still valid with current messages
+                        const pathIds = savedTreePath.split(',').filter(id => id !== '');
+                        const validPath = pathIds.every(id => {
+                            if (id === '') return true; // Root is always valid
+                            return messages.some(msg => msg.id.toString() === id);
+                        });
+                        
+                        if (validPath) {
+                            currentTreePath = savedTreePath;
+                            console.log('Restored saved tree path:', savedTreePath);
+                        } else {
+                            // Fallback to main tree path if saved path is invalid
+                            currentTreePath = calculateMainTreePath(messages);
+                            console.log('Saved tree path invalid, using main path:', currentTreePath);
+                        }
+                    } else {
+                        // Calculate the default tree path for the main conversation branch
+                        if (messages.length > 0) {
+                            currentTreePath = calculateMainTreePath(messages);
+                            // Save the initial main tree path to database
+                            saveLastTreePath(sessionId, currentTreePath);
+                            // Calculated main tree path
+                        }
                     }
                     
                     displayMessages(messages); // Use filtering to show only main branch
@@ -1839,6 +1857,12 @@
                         currentTreePath = newTreePath;
                         updateURL();
                         
+                        // Save the new tree path to database
+                        saveLastTreePath(currentSessionId, newTreePath);
+                        
+                        // Save the new tree path to database
+                        saveLastTreePath(currentSessionId, newTreePath);
+                        
                         // Update branch navigation controls after a small delay
                         setTimeout(() => {
                             const parentBotIndex = currentSessionMessages.findIndex(msg => 
@@ -1941,6 +1965,56 @@
             return null;
         }
         
+        // Tree path persistence functions
+        async function saveLastTreePath(sessionId, treePath) {
+            if (!sessionId || sessionId === 'guest' || !treePath) return;
+            
+            try {
+                console.log(`Saving tree path for session ${sessionId}: ${treePath}`);
+                const response = await makeAuthenticatedRequest(`/chatbot/save-tree-path`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        tree_path: treePath
+                    })
+                });
+                
+                if (response.ok) {
+                    console.log('Tree path saved successfully');
+                } else {
+                    console.warn('Failed to save tree path:', await response.text());
+                }
+            } catch (error) {
+                console.error('Error saving tree path:', error);
+            }
+        }
+
+        async function getLastTreePath(sessionId) {
+            if (!sessionId || sessionId === 'guest') return null;
+            
+            try {
+                console.log(`Retrieving last tree path for session ${sessionId}`);
+                const response = await makeAuthenticatedRequest(`/chatbot/get-tree-path?session=${sessionId}`, {
+                    method: 'GET'
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log('Retrieved tree path:', data.tree_path);
+                    return data.tree_path;
+                } else {
+                    console.warn('Failed to retrieve tree path:', await response.text());
+                    return null;
+                }
+            } catch (error) {
+                console.error('Error retrieving tree path:', error);
+                return null;
+            }
+        }
+
         function getCurrentSessionMessages() {
             return currentSessionMessages || [];
         }
@@ -2026,6 +2100,9 @@
                 if (response.ok) {
                     currentSessionId = sessionId;
                     currentTreePath = treePath;
+                    
+                    // Save the tree path to database
+                    saveLastTreePath(sessionId, treePath);
                     
                     // Store complete session messages for branch navigation
                     const messages = data.data || [];
@@ -2208,6 +2285,9 @@
                     
                     currentTreePath = newTreePath;
                     
+                    // Save the new tree path to database
+                    saveLastTreePath(currentSessionId, newTreePath);
+                    
                     // Re-enable filtering and display messages for this tree path
                     displayMessagesWithFiltering(allMessages);
                     
@@ -2378,6 +2458,8 @@
                     // Calculate the main tree path
                     if (messages.length > 0) {
                         currentTreePath = calculateMainTreePath(messages);
+                        // Save the main tree path to database
+                        saveLastTreePath(currentSessionId, currentTreePath);
                     } else {
                         currentTreePath = null;
                     }
