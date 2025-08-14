@@ -89,7 +89,7 @@ def get_created_at_for_session(session_id):
 def print_sessions(username, page):
     if page is None or page < 1:
         page = 1
-    per_page = 9
+    per_page = 15
     offset = (page - 1) * per_page
 
     conn = sqlite3.connect('database.sqlite')
@@ -231,7 +231,6 @@ def get_summary_for_session(session_id):
         conn.close()
 
 def get_summary_for_message_branch(message_id):
-    """Get the summary from a specific message (for branching scenarios)"""
     conn = sqlite3.connect('database.sqlite')
     conn.execute('PRAGMA foreign_keys = ON;')
     cur = conn.cursor()
@@ -358,7 +357,6 @@ def get_messages_for_session(session_id, tree_path=None):
         conn.close()
 
 def get_all_session_messages(session_id, cur):
-    """Get ALL messages in a session, ordered by creation time"""
     cur.execute(
         "SELECT id, sender, content, created_at, connected_from, connects_to, connections "
         "FROM message "
@@ -602,7 +600,6 @@ def remove_invalid_sessions():
         conn.close()
 
 def get_session_id_for_message(message_id):
-    """Get the session_id for a given message_id"""
     conn = sqlite3.connect('database.sqlite')
     conn.execute('PRAGMA foreign_keys = ON;')
     cur = conn.cursor()
@@ -626,7 +623,6 @@ def get_session_id_for_message(message_id):
         conn.close()
 
 def update_session_last_change(session_id):
-    """Update the lastChangeMade timestamp for a session"""
     conn = sqlite3.connect('database.sqlite')
     conn.execute('PRAGMA foreign_keys = ON;')
     cur = conn.cursor()
@@ -649,12 +645,10 @@ def update_session_last_change(session_id):
         conn.close()
 
 def initialize_missing_last_change_timestamps():
-    """Initialize lastChangeMade for existing sessions that have NULL values"""
     conn = sqlite3.connect('database.sqlite')
     conn.execute('PRAGMA foreign_keys = ON;')
     cur = conn.cursor()
     try:
-        # Get sessions with NULL lastChangeMade and their first message timestamp
         cur.execute("""
             SELECT s.id, MIN(m.created_at) as first_message_time
             FROM session s
@@ -666,7 +660,6 @@ def initialize_missing_last_change_timestamps():
         
         updated_count = 0
         for session_id, first_message_time in sessions_to_update:
-            # Use first message time if available, otherwise current time
             timestamp = first_message_time or datetime.datetime.now(datetime.timezone.utc).isoformat()
             
             cur.execute(
@@ -688,7 +681,6 @@ def initialize_missing_last_change_timestamps():
         conn.close()
 
 def get_message_connected_from(message_id):
-    """Get the connected_from field for a given message_id"""
     conn = sqlite3.connect('database.sqlite')
     conn.execute('PRAGMA foreign_keys = ON;')
     cur = conn.cursor()

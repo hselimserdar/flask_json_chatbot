@@ -1,4 +1,3 @@
-
 import base64
 import hashlib
 import hmac
@@ -7,7 +6,6 @@ import secrets
 import sqlite3
 import jwt
 from flask import request, current_app
-from functools import wraps
 from dotenv import load_dotenv
 
 load_dotenv()

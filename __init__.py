@@ -1,9 +1,9 @@
 from flask import Flask, request, render_template, redirect
-from chatbot_manage import chat_with_gemini, create_session_for_user
+from chatbot_manage import chat_with_gpt, create_session_for_user
 from user_process import compare_passwords, get_current_user, search_for_existing_user, add_new_user
 from db_utilities import (get_messages_for_session, is_session_owner,
                          delete_session_for_user, get_session_id_for_message,
-                         print_sessions, get_user_id, update_session_last_change)
+                         print_sessions, get_user_id, get_message_by_id)
 from dotenv import load_dotenv
 import os
 import jwt
@@ -197,13 +197,11 @@ def session_messages():
 def chatbot():
     user = get_current_user() or "guest"
     
-    # Safe JSON parsing to prevent NoneType errors
     json_data = request.get_json() or {}
     message = json_data.get('message')
     parent_message_id = json_data.get('parent_message_id')
     session_id = request.args.get('session')
     
-    # Validate message content
     if not message or not message.strip():
         if debugging:
             print("Empty or missing message received")
@@ -217,13 +215,19 @@ def chatbot():
         if debugging:
             print("Chatbot accessed by guest user, sessions will not be saved")
             print("Prompt:", message)
-        reply = chat_with_gemini(user, message, session_id=None, first_message=True)
+        reply = chat_with_gpt(user, message, session_id=None, first_message=True)
         if debugging:
-            print("Reply from Gemini API:", reply)
+            print("Reply from the API:", reply)
+
         if not reply:
             if debugging:
-                print("Failed to get a reply from Gemini API")
+                print("Failed to get a reply from the API")
             return {"message": "Failed to get a reply from the API."}, 500
+        elif isinstance(reply, dict) and reply.get("error"):
+            if debugging:
+                print(f"API error: {reply.get('message')}")
+            return {"message": reply.get("message", "Failed to get a reply from the API.")}, 500
+        
         return reply
     else:
         if debugging:
@@ -247,12 +251,19 @@ def chatbot():
                 if debugging:
                     print("Failed to create a new session for user:", user)
                 return {"message": "Failed to create a new session."}, 500
-            reply = chat_with_gemini(user, message, session_id=session_id, first_message=True)
+            reply = chat_with_gpt(user, message, session_id=session_id, first_message=True)
+            
             if not reply:
                 if debugging:
-                    print("Failed to get a reply from Gemini API")
+                    print("Failed to get a reply from the API")
                 delete_session_for_user(user, session_id)
                 return {"message": "Failed to get a reply from the API."}, 500
+            elif isinstance(reply, dict) and reply.get("error"):
+                if debugging:
+                    print(f"API error: {reply.get('message')}")
+                delete_session_for_user(user, session_id)
+                return {"message": reply.get("message", "Failed to get a reply from the API.")}, 500
+            
             return reply
         else:
             if debugging:
@@ -262,17 +273,22 @@ def chatbot():
                 if debugging:
                     print(f"User {user} is not authorized to access session: {session_id}")
                 return {"message": "Forbidden: You do not have access to this session."}, 403
-            reply = chat_with_gemini(user, message, session_id=session_id, first_message=False, parent_message_id=parent_message_id)
+            reply = chat_with_gpt(user, message, session_id=session_id, first_message=False, parent_message_id=parent_message_id)
+            
             if not reply:
-
                 if parent_message_id:
                     if debugging:
                         print(f"Branching failed for parent_message_id: {parent_message_id}")
                     return {"message": "Forbidden: Cannot branch from the first message."}, 403
                 else:
                     if debugging:
-                        print("Failed to get a reply from Gemini API for session:", session_id)
+                        print("Failed to get a reply from the API for session:", session_id)
                     return {"message": "Failed to get a reply from the API."}, 500
+            elif isinstance(reply, dict) and reply.get("error"):
+                if debugging:
+                    print(f"API error: {reply.get('message')}")
+                return {"message": reply.get("message", "Failed to get a reply from the API.")}, 500
+            
             return reply
 
 @app.route('/login')
@@ -307,9 +323,7 @@ def guest_chat_page():
 
 @app.route('/verify-token', methods=['POST'])
 def verify_token():
-    """Verify JWT token and return user information"""
     try:
-
         auth_header = request.headers.get('Authorization')
         if not auth_header or not auth_header.startswith('Bearer '):
             if debugging:
@@ -374,9 +388,7 @@ def verify_token():
 
 @app.route('/refresh-token', methods=['POST'])
 def refresh_token():
-    """Refresh JWT token if it's still valid but near expiration"""
     try:
-
         auth_header = request.headers.get('Authorization')
         if not auth_header or not auth_header.startswith('Bearer '):
             if debugging:
@@ -388,7 +400,6 @@ def refresh_token():
             print(f"Refreshing token: {token[:20]}...")
         
         try:
-
             payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'])
             username = payload.get('sub')
             
@@ -476,8 +487,6 @@ def edit_message():
         return {"message": "Forbidden: You do not have access to this session."}, 403
     
     try:
-        from db_utilities import get_message_by_id
-        
         original_message = get_message_by_id(message_id)
         if not original_message:
             if debugging:
@@ -495,11 +504,16 @@ def edit_message():
                 print(f"Attempted to edit root message {message_id}")
             return {"message": "Root message cannot be edited."}, 400
         
-        reply = chat_with_gemini(user, new_message, session_id=session_id, first_message=False, parent_message_id=parent_message_id)
+        reply = chat_with_gpt(user, new_message, session_id=session_id, first_message=False, parent_message_id=parent_message_id)
+
         if not reply:
             if debugging:
-                print("Failed to get a reply from Gemini API for edited message")
+                print("Failed to get a reply from GPT API for edited message")
             return {"message": "Failed to get a reply from the API."}, 500
+        elif isinstance(reply, dict) and reply.get("error"):
+            if debugging:
+                print(f"API error during message edit: {reply.get('message')}")
+            return {"message": reply.get("message", "Failed to get a reply from the API.")}, 500
         
         return reply
         
@@ -523,14 +537,11 @@ def save_tree_path():
         if not session_id or not tree_path:
             return {"error": "Missing session_id or tree_path"}, 400
         
-        # Verify user owns the session
         user_id = get_user_id(user)
         
-        # Get database connection
         conn = sqlite3.connect('database.sqlite')
         cursor = conn.cursor()
         
-        # Check if session belongs to user
         cursor.execute(
             "SELECT id FROM session WHERE id = ? AND user_id = ?",
             (session_id, user_id)
@@ -540,7 +551,6 @@ def save_tree_path():
             conn.close()
             return {"error": "Session not found or access denied"}, 403
         
-        # Update both lastTreeUserViewed and lastChangeMade in single transaction
         current_time = datetime.datetime.now(datetime.timezone.utc).isoformat()
         cursor.execute(
             "UPDATE session SET lastTreeUserViewed = ?, lastChangeMade = ? WHERE id = ? AND user_id = ?",
@@ -573,14 +583,11 @@ def get_tree_path():
         if not session_id:
             return {"error": "Missing session parameter"}, 400
         
-        # Verify user owns the session
         user_id = get_user_id(user)
         
-        # Get database connection
         conn = sqlite3.connect('database.sqlite')
         cursor = conn.cursor()
         
-        # Get the lastTreeUserViewed for the session
         cursor.execute(
             "SELECT lastTreeUserViewed FROM session WHERE id = ? AND user_id = ?",
             (session_id, user_id)

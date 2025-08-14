@@ -1,7 +1,3 @@
-"""
-Tools module for the chatbot - provides web search and math calculation capabilities
-"""
-import json
 import requests
 import math
 import re
@@ -13,10 +9,6 @@ load_dotenv()
 debugging = os.getenv("debugging", "false").lower() == "true"
 
 def calculate_math(expression: str) -> Dict[str, Any]:
-    """
-    Safely evaluate mathematical expressions
-    Supports basic arithmetic, trigonometry, logarithms, and constants
-    """
     try:
         if debugging:
             print(f"MATH TOOL DEBUG - Starting calculation")
@@ -101,9 +93,6 @@ def calculate_math(expression: str) -> Dict[str, Any]:
         }
 
 def search_web(query: str, num_results: int = 5) -> Dict[str, Any]:
-    """
-    Search the web using multiple strategies for better results
-    """
     try:
         if debugging:
             print(f"WEB SEARCH DEBUG - Starting search")
@@ -473,16 +462,6 @@ TOOL_FUNCTIONS = {
 }
 
 def execute_tool(function_name: str, parameters: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Execute a tool function with given parameters
-    
-    Args:
-        function_name: Name of the function to execute
-        parameters: Dictionary of parameters to pass to the function
-        
-    Returns:
-        Dictionary containing the result or error information
-    """
     if debugging:
         print(f"TOOL EXECUTION DEBUG")
         print(f"   Function: {function_name}")

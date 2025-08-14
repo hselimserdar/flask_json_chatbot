@@ -1,6 +1,9 @@
 # Flask Web Framework
 flask>=3.0.0
 
+# Production WSGI Server
+waitress>=2.1.0
+
 # Environment Variables Management
 python-dotenv>=1.0.0
 
@@ -10,7 +13,7 @@ google-genai>=1.0.0
 # JWT Token Authentication
 PyJWT>=2.8.0
 
-# HTTP Requests (for web search tool)
+# HTTP Requests (for AI APIs and web search tool)
 requests>=2.31.0
 
 # Python Standard Library Dependencies
@@ -27,6 +30,8 @@ requests>=2.31.0
 # - secrets (built-in secure random number generation)
 # - functools (built-in functional programming tools)
 # - typing (built-in type hints, Python 3.8+)
+# - threading (built-in thread management)
+# - time (built-in time operations)
 
 # Optional Development Dependencies (uncomment if needed)
 # pytest>=7.0.0        # For testing

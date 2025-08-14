@@ -1,51 +1,39 @@
-
 import os
 import re
+import json
+import requests
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types
 from typing import List, Dict
 from tools import AVAILABLE_TOOLS, execute_tool
 
 load_dotenv()
 debugging = os.getenv("debugging", "false").lower() == "true"
 
-def call_gemini_api(
+def call_deepseek_api(
     messages: List[Dict[str, str]],
-    model: str = "gemini-2.0-flash-exp",
+    model: str = "deepseek-chat",
     temperature: float = 0.3,
     candidate_count: int = 1,
     use_tools: bool = False
 ) -> str:
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = os.getenv("DEEPSEEK_API_KEY")
     if not api_key:
-        raise RuntimeError("GEMINI_API_KEY environment variable is not set")
+        raise RuntimeError("DEEPSEEK_API_KEY environment variable is not set")
 
-    client = genai.Client(api_key=api_key)
-
-    role_map = {
-        "user": "user",
-        "system": "user",
-        "assistant": "model",
-        "bot": "model"
-    }
-
-    contents: list[types.Content] = []
+    openai_messages = []
     for m in messages:
-        role = role_map.get(m["author"], "user")
-        contents.append(
-            types.Content(
-                role=role,
-                parts=[types.Part.from_text(text=m["content"])]
-            )
-        )
+        role = "user" if m["author"] in ["user", "system"] else "assistant"
+        openai_messages.append({
+            "role": role,
+            "content": m["content"]
+        })
 
     try:
-        if use_tools and contents:
+        if use_tools and openai_messages:
             if debugging:
-                print(f" GEMINI API DEBUG - Tool processing enabled")
+                print(f" DEEPSEEK API DEBUG - Tool processing enabled")
             
-            full_message = contents[-1].parts[0].text
+            full_message = openai_messages[-1]["content"]
             
             if debugging:
                 print(f"   Full message length: {len(full_message)} characters")
@@ -53,14 +41,12 @@ def call_gemini_api(
             
             user_message = full_message
             if "Current message:" in full_message:
-
                 current_msg_match = re.search(r"Current message:\s*(.+?)(?:\n\n|$)", full_message, re.DOTALL)
                 if current_msg_match:
                     user_message = current_msg_match.group(1).strip()
                     if debugging:
                         print(f"   Extracted current message: '{user_message}'")
             elif "User message:" in full_message:
-
                 user_msg_match = re.search(r"User message:\s*(.+?)(?:\n\n|$)", full_message, re.DOTALL)
                 if user_msg_match:
                     user_message = user_msg_match.group(1).strip()
@@ -143,7 +129,6 @@ def call_gemini_api(
                             for i, result in enumerate(search_result["results"][:3], 1):
                                 title = result.get('title', 'No title')
                                 snippet = result.get('snippet', 'No description available')
-
                                 snippet = re.sub(r'<[^>]+>', '', snippet)
                                 search_info += f"{i}. **{title}**\n{snippet}\n\n"
                                 
@@ -151,7 +136,6 @@ def call_gemini_api(
                                     print(f"     Result {i}: {title[:50]}...")
                         
                         if "Current message:" in full_message:
-
                             enhanced_message = re.sub(
                                 r"(Current message:\s*)(.+?)(\n\n.*)?$", 
                                 f"\\1{user_message}\\n\\nSearch results:\\n{search_info}\\n\\nPlease provide a helpful response based on this information.\\3", 
@@ -164,10 +148,7 @@ def call_gemini_api(
                         if debugging:
                             print(f"    Enhanced message created (length: {len(enhanced_message)})")
                         
-                        contents[-1] = types.Content(
-                            role="user",
-                            parts=[types.Part.from_text(text=enhanced_message)]
-                        )
+                        openai_messages[-1]["content"] = enhanced_message
                     else:
                         if debugging:
                             print(f"    Search failed: {search_result.get('error', 'Unknown error')}")
@@ -197,90 +178,163 @@ def call_gemini_api(
                     r"(\d+)\s*[\*\+\-\/\^]\s*(\d+)"
                 ]
             
-            for i, pattern in enumerate(math_patterns):
-                match = re.search(pattern, user_message_lower)
-                if match:
-                    if i == 4:
-                        num1, operator, num2 = match.groups()
-                        expression = f"{num1} {operator} {num2}"
-                        if debugging:
-                            print(f"   Pattern {i+1} matched (natural language): '{num1} {operator} {num2}'")
-                    else:
-                        expression = match.group(1).strip()
-                        if debugging:
-                            print(f"   Pattern {i+1} matched: '{pattern}' → '{expression}'")
-                    
-                    original_expression = expression
-                    expression = expression.replace("times", "*")
-                    expression = expression.replace("multiplied by", "*") 
-                    expression = expression.replace("plus", "+")
-                    expression = expression.replace("minus", "-")
-                    expression = expression.replace("divided by", "/")
-                    expression = expression.replace("×", "*")
-                    expression = expression.replace("÷", "/")
-                    expression = expression.replace("^", "**")
-                    
-                    if debugging and original_expression != expression:
-                        print(f"   Natural language converted: '{original_expression}' → '{expression}'")
-                    
-                    has_numbers = bool(re.search(r'\d', expression))
-                    has_operators = any(op in expression for op in ['+', '-', '*', '/', '**', '(', ')'])
-                    is_long_enough = len(expression.replace(' ', '')) > 2
-                    
-                    if debugging:
-                        print(f"   Has numbers: {has_numbers}, Has operators: {has_operators}, Long enough: {is_long_enough}")
-                    
-                    if has_numbers and (has_operators or "times" in original_expression or "plus" in original_expression):
-                        if debugging:
-                            print(f"     INITIATING MATH CALCULATION")
-                            print(f"   Expression: '{expression}'")
-                        
-                        math_result = execute_tool("calculate_math", {"expression": expression})
-                        
-                        if isinstance(math_result, dict) and math_result.get("success"):
-                            result_value = math_result.get('result')
-                            calc_info = f"\nCalculation result: {original_expression} = {result_value}\n"
-                            
+                for i, pattern in enumerate(math_patterns):
+                    match = re.search(pattern, user_message_lower)
+                    if match:
+                        if i == 4:
+                            num1, operator, num2 = match.groups()
+                            expression = f"{num1} {operator} {num2}"
                             if debugging:
-                                print(f"    Math calculation successful: {result_value}")
-                            
-                            original_content = contents[-1].parts[0].text
-                            enhanced_content = f"{original_content}\n{calc_info}\nPlease provide a response that includes this calculation."
-                            contents[-1] = types.Content(
-                                role="user",
-                                parts=[types.Part.from_text(text=enhanced_content)]
-                            )
+                                print(f"   Pattern {i+1} matched (natural language): '{num1} {operator} {num2}'")
                         else:
+                            expression = match.group(1).strip()
                             if debugging:
-                                print(f"    Math calculation failed: {math_result.get('error', 'Unknown error')}")
-                        break
-                    elif debugging:
-                        print(f"     Expression doesn't qualify as math: '{expression}'")
-            else:
-                if debugging:
-                    print(f"   No math expressions detected")
+                                print(f"   Pattern {i+1} matched: '{pattern}' → '{expression}'")
+                        
+                        original_expression = expression
+                        expression = expression.replace("times", "*")
+                        expression = expression.replace("multiplied by", "*") 
+                        expression = expression.replace("plus", "+")
+                        expression = expression.replace("minus", "-")
+                        expression = expression.replace("divided by", "/")
+                        expression = expression.replace("×", "*")
+                        expression = expression.replace("÷", "/")
+                        expression = expression.replace("^", "**")
+                        
+                        if debugging and original_expression != expression:
+                            print(f"   Natural language converted: '{original_expression}' → '{expression}'")
+                        
+                        has_numbers = bool(re.search(r'\d', expression))
+                        has_operators = any(op in expression for op in ['+', '-', '*', '/', '**', '(', ')'])
+                        is_long_enough = len(expression.replace(' ', '')) > 2
+                        
+                        if debugging:
+                            print(f"   Has numbers: {has_numbers}, Has operators: {has_operators}, Long enough: {is_long_enough}")
+                        
+                        if has_numbers and (has_operators or "times" in original_expression or "plus" in original_expression):
+                            if debugging:
+                                print(f"     INITIATING MATH CALCULATION")
+                                print(f"   Expression: '{expression}'")
+                            
+                            math_result = execute_tool("calculate_math", {"expression": expression})
+                            
+                            if isinstance(math_result, dict) and math_result.get("success"):
+                                result_value = math_result.get('result')
+                                calc_info = f"\nCalculation result: {original_expression} = {result_value}\n"
+                                
+                                if debugging:
+                                    print(f"    Math calculation successful: {result_value}")
+                                
+                                original_content = openai_messages[-1]["content"]
+                                enhanced_content = f"{original_content}\n{calc_info}\nPlease provide a response that includes this calculation."
+                                openai_messages[-1]["content"] = enhanced_content
+                            else:
+                                if debugging:
+                                    print(f"    Math calculation failed: {math_result.get('error', 'Unknown error')}")
+                            break
+                        elif debugging:
+                            print(f"     Expression doesn't qualify as math: '{expression}'")
+                else:
+                    if debugging:
+                        print(f"   No math expressions detected")
 
-        response = client.models.generate_content(
-            model=model,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                temperature=temperature,
-                candidate_count=candidate_count
-            )
-        )
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
         
-        return response.text
+        payload = {
+            "model": model,
+            "messages": openai_messages,
+            "temperature": temperature,
+            "max_tokens": 4000,
+            "stream": False
+        }
+        
+        if debugging:
+            print(f"   DeepSeek API request: {json.dumps(payload, indent=2)[:500]}...")
+        
+        base_timeout = 45 if use_tools else 25
+        message_length = sum(len(msg["content"]) for msg in openai_messages)
+        
+        if message_length > 2000:
+            timeout = base_timeout + 30
+        elif message_length > 1000:
+            timeout = base_timeout + 15
+        else:
+            timeout = base_timeout
+            
+        timeout = min(timeout, 120)
+        
+        max_retries = 3
+        
+        if debugging:
+            print(f"   Using timeout: {timeout}s (message length: {message_length} chars)")
+        
+        for attempt in range(max_retries + 1):
+            try:
+                if debugging and attempt > 0:
+                    print(f"   Retry attempt {attempt + 1}/{max_retries + 1}")
+                
+                if attempt > 0:
+                    import time
+                    backoff_time = min(2 ** attempt, 8)  # Max 8 seconds
+                    if debugging:
+                        print(f"   Waiting {backoff_time}s before retry...")
+                    time.sleep(backoff_time)
+                
+                response = requests.post(
+                    "https://api.deepseek.com/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                    timeout=timeout
+                )
+                break
+                
+            except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+                if attempt < max_retries:
+                    if debugging:
+                        print(f"   Timeout/connection error on attempt {attempt + 1}, retrying with longer timeout...")
+                    timeout = min(timeout + 20, 150)
+                    continue
+                else:
+                    if debugging:
+                        print(f"   All retry attempts failed, using fallback response")
+                    return "I'm sorry, but my response is taking longer than expected. This might be due to high server load. Please try asking your question again, or try rephrasing it in a simpler way."
+        
+        if debugging:
+            print(f"   DeepSeek API response status: {response.status_code}")
+        
+        response.raise_for_status()
+        
+        result = response.json()
+        
+        if debugging:
+            print(f"   DeepSeek API response: {json.dumps(result, indent=2)[:500]}...")
+        
+        if "choices" in result and len(result["choices"]) > 0:
+            return result["choices"][0]["message"]["content"]
+        else:
+            raise DeepSeekAPIError("No response choices found in API result")
+    
+    except requests.exceptions.RequestException as e:
+        error_msg = f"DeepSeek API request error: {e}"
+        print(error_msg)
+        if debugging:
+            import traceback
+            traceback.print_exc()
+        raise DeepSeekAPIError(f"DeepSeek API request failed: {str(e)}")
     
     except Exception as e:
-        error_msg = f"Error calling Gemini API: {e}"
+        error_msg = f"Error calling DeepSeek API: {e}"
         print(error_msg)
         if debugging:
             import traceback
             traceback.print_exc()
         
-        raise GeminiAPIError(f"Gemini API call failed: {str(e)}")
+        raise DeepSeekAPIError(f"DeepSeek API call failed: {str(e)}")
 
-class GeminiAPIError(Exception):
+class DeepSeekAPIError(Exception):
     def __init__(self, message, error_type="api_error"):
         self.message = message
         self.error_type = error_type

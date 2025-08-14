@@ -3,10 +3,87 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>HSS GPT</title>
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/50px-logo.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20250814151">
+    <style>
+        /* Force scrollbar styles with inline CSS for immediate effect */
+        .chat-messages::-webkit-scrollbar,
+        #chatMessages::-webkit-scrollbar,
+        pre::-webkit-scrollbar,
+        code::-webkit-scrollbar,
+        .hljs::-webkit-scrollbar {
+            width: 12px !important;
+            height: 12px !important;
+        }
+        
+        .chat-messages::-webkit-scrollbar-track,
+        #chatMessages::-webkit-scrollbar-track,
+        pre::-webkit-scrollbar-track,
+        code::-webkit-scrollbar-track,
+        .hljs::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.3) !important;
+            border-radius: 6px !important;
+            border: 1px solid rgba(0, 0, 0, 0.1) !important;
+        }
+        
+        .chat-messages::-webkit-scrollbar-thumb,
+        #chatMessages::-webkit-scrollbar-thumb,
+        pre::-webkit-scrollbar-thumb,
+        code::-webkit-scrollbar-thumb,
+        .hljs::-webkit-scrollbar-thumb {
+            background: linear-gradient(45deg, #c4c4c4 0%, #d1d1d1 50%, #c4c4c4 100%) !important;
+            border-radius: 6px !important;
+            border: 1px solid #b0b0b0 !important;
+            box-shadow: inset 0 0 1px rgba(255, 255, 255, 0.3) !important;
+        }
+
+        .chat-messages::-webkit-scrollbar-thumb:hover,
+        #chatMessages::-webkit-scrollbar-thumb:hover,
+        pre::-webkit-scrollbar-thumb:hover,
+        code::-webkit-scrollbar-thumb:hover,
+        .hljs::-webkit-scrollbar-thumb:hover {
+            background: linear-gradient(45deg, #d1d1d1 0%, #e0e0e0 50%, #d1d1d1 100%) !important;
+        }
+
+        /* Copy button contrast fix */
+        .message-copy-btn {
+            color: #000000 !important;
+            opacity: 0.8 !important;
+        }
+
+        /* Mobile horizontal scroll fix */
+        @media (max-width: 768px) {
+            html, body {
+                overflow-x: hidden !important;
+                max-width: 100vw !important;
+            }
+            
+            .chat-container, .chat-messages, #chatMessages {
+                overflow-x: hidden !important;
+                max-width: 100% !important;
+            }
+            
+            .user-message, .bot-message {
+                max-width: calc(100% - 1rem) !important;
+                word-wrap: break-word !important;
+                overflow-wrap: break-word !important;
+            }
+            
+            .bot-message {
+                margin-right: 1rem !important;
+            }
+            
+            .message-content {
+                max-width: 100% !important;
+                word-break: break-word !important;
+            }
+        }
+    </style>
     <!-- pick a style you like; here's GitHub-Dark -->
     <link rel="stylesheet"
         href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/github-dark.min.css" />
@@ -22,7 +99,13 @@
     <div class="chat-container">
         <header class="chat-header">
             <div class="header-left">
-                <button id="mobileMenuBtn" class="mobile-menu-btn">☰</button>
+                <button id="mobileMenuBtn" class="mobile-menu-btn">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <line x1="3" y1="6" x2="21" y2="6"></line>
+                        <line x1="3" y1="12" x2="21" y2="12"></line>
+                        <line x1="3" y1="18" x2="21" y2="18"></line>
+                    </svg>
+                </button>
                 <a href="{{ url_for('home') }}" class="logo-link">
                     <img src="{{ url_for('static', filename='icons/50px-logo.png') }}" alt="HSS GPT Logo" class="chat-logo">
                 </a>
@@ -42,11 +125,6 @@
                 </div>
                 <div id="sessionsList" class="sessions-list">
                     <!-- Sessions will be loaded here -->
-                </div>
-                <div class="sidebar-pagination">
-                    <button id="prevPage" class="btn btn-outline btn-small">Previous</button>
-                    <span id="pageInfo">Page 1</span>
-                    <button id="nextPage" class="btn btn-outline btn-small">Next</button>
                 </div>
             </aside>
 
@@ -77,10 +155,13 @@
     <script>
         let currentSessionId = null;
         let currentPage = 1;
+        let hasMoreSessions = true;
+        let isLoadingSessions = false;
         let isGuest = false;
         let currentTreePath = null;
         let currentConversationBranches = {};  // Store branch structure
         let currentSessionMessages = [];  // Store complete session messages for branch navigation
+        let isTypingIndicatorActive = false;  // Track typing indicator state
 
         // Check authentication on page load
         window.addEventListener('load', function () {
@@ -104,8 +185,15 @@
             } else {
                 // Verify token and get user info
                 verifyToken();
-                // Load sessions immediately for authenticated users
-                loadSessions(currentPage);
+                // Check for session ID in URL parameters
+                const urlParams = new URLSearchParams(window.location.search);
+                const sessionFromUrl = urlParams.get('session');
+                if (sessionFromUrl) {
+                    currentSessionId = sessionFromUrl;
+                }
+                // Reset state and load sessions immediately for authenticated users
+                resetSessionsState();
+                loadSessions(1);
                 // Mark chat main as having sidebar
                 document.querySelector('.chat-main').classList.add('with-sidebar');
             }
@@ -419,10 +507,35 @@
             // Logout
             document.getElementById('logoutBtn').addEventListener('click', logout);
 
+            // Global ESC key listener for canceling edits
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    // Check if any message is currently being edited
+                    const activeEdit = document.querySelector('.cancel-edit-btn[style*="inline-flex"]');
+                    if (activeEdit) {
+                        e.preventDefault();
+                        const messageId = activeEdit.id.replace('cancel-edit-', '');
+                        cancelUserMessageEdit(messageId);
+                    }
+                }
+            });
+
+            // Enhanced manual scroll tracking
+            const chatMessages = document.getElementById('chatMessages');
+            if (chatMessages) {
+                chatMessages.addEventListener('scroll', function(e) {
+                    // Simple user scroll tracking
+                    if (e.isTrusted) {
+                        window.lastManualScrollTime = Date.now();
+                    }
+                }, { passive: true });
+            }
+
             // Pagination (only for authenticated users)
             if (!isGuest) {
-                document.getElementById('prevPage').addEventListener('click', () => changePage(currentPage - 1));
-                document.getElementById('nextPage').addEventListener('click', () => changePage(currentPage + 1));
+                // Add infinite scroll to sessions list
+                const sessionsList = document.getElementById('sessionsList');
+                sessionsList.addEventListener('scroll', handleSessionsScroll);
 
                 // Mobile menu toggle
                 document.getElementById('mobileMenuBtn').addEventListener('click', toggleMobileSidebar);
@@ -503,7 +616,8 @@
                         currentSessionId = data.session_id;
                         updateURL();
                         // Reload sessions to show the new session
-                        loadSessions(currentPage);
+                        resetSessionsState();
+                        loadSessions(1);
                     }
                     
                     // Check if session title has changed and update sidebar
@@ -597,6 +711,19 @@
                         
                         // Update tree path display if needed
                         updateTreePathDisplay();
+                        
+                        // Otomatik tree path güncellemesi - bot response aldıktan sonra
+                        if (currentSessionId && !isGuest && currentTreePath) {
+                            console.log('🔄 Auto-extending tree path after bot response...');
+                            saveLastTreePath(currentSessionId, currentTreePath);
+                        }
+                        
+                        // Refresh sessions list to reflect potential title changes and reorder by lastChangeMade
+                        if (currentSessionId && !isGuest) {
+                            console.log('Refreshing sessions list after message exchange...');
+                            resetSessionsState();
+                            loadSessions(1);
+                        }
                     } else {
                         showErrorMessage('Received empty response from the chatbot. Please try again.');
                     }
@@ -671,6 +798,23 @@
 
             messageDiv.appendChild(messageContent);
             messageDiv.appendChild(timestampDiv);
+
+            // Add copy button for bot messages (hover to show, mobile friendly)
+            if (sender === 'bot' && messageData && messageData.id) {
+                const copyButtonDiv = document.createElement('div');
+                copyButtonDiv.className = 'message-copy-container';
+                
+                copyButtonDiv.innerHTML = `
+                    <button class="message-copy-btn" onclick="copyMessage('${messageData.id}')" title="Copy message">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                        </svg>
+                    </button>
+                `;
+                
+                messageDiv.appendChild(copyButtonDiv);
+            }
 
             // Add branch navigation for user messages that connect FROM bot messages with multiple branches (ChatGPT style)
             if (sender === 'user' && messageData && messageData.connected_from) {
@@ -809,33 +953,141 @@
             return apiFailureMessages.some(apiMsg => message.includes(apiMsg));
         }
 
-        function showTypingIndicator() {
-            const chatMessages = document.getElementById('chatMessages');
-            const typingDiv = document.createElement('div');
-            typingDiv.className = 'message bot-message typing-indicator';
-            typingDiv.id = 'typingIndicator';
-            typingDiv.innerHTML = '<div class="message-content">Typing<span class="dots">...</span></div>';
-            chatMessages.appendChild(typingDiv);
-            chatMessages.scrollTop = chatMessages.scrollHeight;
-        }
-
         function hideTypingIndicator() {
             const typingIndicator = document.getElementById('typingIndicator');
             if (typingIndicator) {
                 typingIndicator.remove();
             }
+            isTypingIndicatorActive = false;
+        }
+
+        function removeTypingIndicator() {
+            hideTypingIndicator();
+        }
+
+        function showTypingIndicator() {
+            // First, ensure any existing typing indicator is removed
+            hideTypingIndicator();
+            
+            const chatMessages = document.getElementById('chatMessages');
+            if (!chatMessages) return;
+            
+            // Set global state
+            isTypingIndicatorActive = true;
+            
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'message bot-message typing-indicator';
+            typingDiv.id = 'typingIndicator';
+            typingDiv.innerHTML = '<div class="message-content">Typing<span class="dots">...</span></div>';
+            
+            // Add multiple attributes to make it more identifiable
+            typingDiv.setAttribute('data-typing', 'true');
+            typingDiv.setAttribute('data-persistent', 'true');
+            typingDiv.style.display = 'flex';
+            typingDiv.style.flexDirection = 'column';
+            
+            chatMessages.appendChild(typingDiv);
+            
+            // Smooth scroll to typing indicator with buffer
+            const scrollToTyping = () => {
+                const typingElement = document.getElementById('typingIndicator');
+                if (typingElement) {
+                    // Use smooth scrolling to center the typing indicator
+                    typingElement.scrollIntoView({ 
+                        behavior: 'smooth', 
+                        block: 'end',
+                        inline: 'nearest'
+                    });
+                    
+                    // Add buffer after smooth scroll completes
+                    setTimeout(() => {
+                        const currentScroll = chatMessages.scrollTop;
+                        const maxScroll = chatMessages.scrollHeight - chatMessages.clientHeight;
+                        const bufferAmount = Math.min(300, maxScroll - currentScroll);
+                        if (bufferAmount > 0) {
+                            // Smooth scroll to add buffer
+                            chatMessages.scrollTo({
+                                top: currentScroll + bufferAmount,
+                                behavior: 'smooth'
+                            });
+                        }
+                    }, 400); // Wait for smooth scroll to complete
+                } else {
+                    // Fallback: smooth scroll to bottom if typing element not found
+                    chatMessages.scrollTo({
+                        top: chatMessages.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                }
+            };
+            
+            // Single smooth scroll with delay for DOM updates
+            setTimeout(() => {
+                scrollToTyping();
+            }, 50); // Small delay to let DOM update
+            
+            // Enhanced backup restoration with multiple attempts
+            const restoreTypingIndicator = () => {
+                if (isTypingIndicatorActive && !document.getElementById('typingIndicator')) {
+                    console.log('Typing indicator lost, restoring...');
+                    const backupDiv = document.createElement('div');
+                    backupDiv.className = 'message bot-message typing-indicator';
+                    backupDiv.id = 'typingIndicator';
+                    backupDiv.innerHTML = '<div class="message-content">Typing<span class="dots">...</span></div>';
+                    backupDiv.setAttribute('data-typing', 'true');
+                    backupDiv.setAttribute('data-persistent', 'true');
+                    backupDiv.style.display = 'flex';
+                    backupDiv.style.flexDirection = 'column';
+                    
+                    const messages = document.getElementById('chatMessages');
+                    if (messages) {
+                        messages.appendChild(backupDiv);
+                        // Force scroll to ensure visibility
+                        messages.scrollTop = messages.scrollHeight;
+                        
+                        // Ensure it's really visible
+                        setTimeout(() => {
+                            const restored = document.getElementById('typingIndicator');
+                            if (restored) {
+                                restored.scrollIntoView({ behavior: 'smooth', block: 'end' });
+                            }
+                        }, 10);
+                    }
+                }
+            };
+            
+            // Multiple restoration attempts
+            setTimeout(restoreTypingIndicator, 100);
+            setTimeout(restoreTypingIndicator, 200);
+            setTimeout(restoreTypingIndicator, 500);
         }
 
         function adjustTextareaHeight() {
             const textarea = document.getElementById('messageInput');
+            
+            // Reset height to auto to get accurate scrollHeight
             textarea.style.height = 'auto';
-            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+            
+            // Calculate new height
+            const newHeight = Math.min(textarea.scrollHeight, 120);
+            textarea.style.height = newHeight + 'px';
+            
+            // Show scrollbar only if content exceeds max height
+            if (textarea.scrollHeight > 120) {
+                textarea.style.overflowY = 'auto';
+            } else {
+                textarea.style.overflowY = 'hidden';
+            }
         }
 
-        async function loadSessions(page = 1) {
-            if (isGuest) return;
+        async function loadSessions(page = 1, append = false) {
+            if (isGuest || isLoadingSessions) return;
+            
+            // If we're appending and there are no more sessions, don't load
+            if (append && !hasMoreSessions) return;
 
-            console.log(`Loading sessions for page: ${page}`);
+            isLoadingSessions = true;
+            console.log(`Loading sessions for page: ${page}, append: ${append}`);
 
             try {
                 const response = await makeAuthenticatedRequest(`/chatbot/session?page=${page}`, {
@@ -846,10 +1098,19 @@
                 console.log('Sessions response:', data);
 
                 if (response.ok) {
-                    displaySessions(data.sessions || []);
+                    displaySessions(data.sessions || [], append);
                     currentPage = page;
-                    console.log(`Updated currentPage to: ${currentPage}, has_next: ${data.has_next}, has_previous: ${data.has_previous}`);
-                    updatePagination(data.has_next, data.has_previous);
+                    hasMoreSessions = data.has_next;
+                    console.log(`Updated currentPage to: ${currentPage}, has_next: ${data.has_next}`);
+                    
+                    // If we have a session ID from URL and this is the first load, automatically load that session
+                    if (!append && currentSessionId && currentSessionId !== 'guest') {
+                        const sessionFromUrl = currentSessionId;
+                        currentSessionId = null; // Reset to prevent infinite loops
+                        setTimeout(() => {
+                            loadSessionById(sessionFromUrl);
+                        }, 100);
+                    }
                 } else {
                     // Check for authentication/authorization errors
                     if (response.status === 403 || response.status === 404) {
@@ -860,20 +1121,63 @@
                             return;
                         }
                     }
-                    document.getElementById('sessionsList').innerHTML =
-                        '<div class="no-sessions">No sessions found</div>';
+                    if (!append) {
+                        document.getElementById('sessionsList').innerHTML =
+                            '<div class="no-sessions">No sessions found</div>';
+                    }
                 }
             } catch (error) {
                 console.error('Load sessions error:', error);
                 showErrorMessage('Failed to load sessions. Please try again.');
-                document.getElementById('sessionsList').innerHTML =
-                    '<div class="error-sessions">Failed to load sessions</div>';
+                if (!append) {
+                    document.getElementById('sessionsList').innerHTML =
+                        '<div class="error-sessions">Failed to load sessions</div>';
+                }
+            } finally {
+                isLoadingSessions = false;
             }
         }
 
-        function displaySessions(sessions) {
+        async function loadSessionById(sessionId) {
+            console.log(`Loading session by ID: ${sessionId}`);
+            try {
+                // First, try to find the session in the current list
+                const sessionDiv = document.querySelector(`[data-session-id="${sessionId}"]`);
+                if (sessionDiv) {
+                    console.log('Found session in current list, loading...');
+                    await loadSession(sessionId);
+                    return;
+                }
+                
+                // If not found in current list, try to load more sessions
+                let page = 2;
+                while (hasMoreSessions) {
+                    await loadSessions(page, true);
+                    const sessionDiv = document.querySelector(`[data-session-id="${sessionId}"]`);
+                    if (sessionDiv) {
+                        console.log(`Found session on page ${page}, loading...`);
+                        await loadSession(sessionId);
+                        return;
+                    }
+                    page++;
+                }
+                
+                // If session still not found, try to load it directly
+                console.log('Session not found in list, attempting direct load...');
+                await loadSession(sessionId);
+            } catch (error) {
+                console.error('Error loading session by ID:', error);
+                showErrorMessage(`Failed to load session ${sessionId}`);
+            }
+        }
+
+        function displaySessions(sessions, append = false) {
             const sessionsList = document.getElementById('sessionsList');
-            sessionsList.innerHTML = '';
+            
+            // Only clear the list if we're not appending
+            if (!append) {
+                sessionsList.innerHTML = '';
+            }
 
             // Sessions are already sorted by lastChangeMade DESC from backend
             // No need to re-sort in frontend
@@ -906,11 +1210,35 @@
                 sessionDiv.addEventListener('click', (e) => {
                     // Don't load session if delete button was clicked
                     if (!e.target.closest('.session-delete-btn')) {
+                        // Close mobile sidebar when session is selected
+                        const sidebar = document.getElementById('sessionsSidebar');
+                        if (sidebar && sidebar.classList.contains('mobile-open')) {
+                            sidebar.classList.remove('mobile-open');
+                        }
                         loadSession(session.id);
                     }
                 });
                 sessionsList.appendChild(sessionDiv);
             });
+        }
+
+        function handleSessionsScroll() {
+            const sessionsList = document.getElementById('sessionsList');
+            const scrollTop = sessionsList.scrollTop;
+            const scrollHeight = sessionsList.scrollHeight;
+            const clientHeight = sessionsList.clientHeight;
+            
+            // If we're within 50px of the bottom and not already loading
+            if (scrollTop + clientHeight >= scrollHeight - 50 && !isLoadingSessions && hasMoreSessions) {
+                console.log('Loading more sessions...');
+                loadSessions(currentPage + 1, true);
+            }
+        }
+
+        function resetSessionsState() {
+            currentPage = 1;
+            hasMoreSessions = true;
+            isLoadingSessions = false;
         }
 
         function updateSessionTitleInSidebar(sessionId, newTitle) {
@@ -959,7 +1287,8 @@
                     }
                     
                     // Reload sessions to update the sidebar
-                    loadSessions(currentPage);
+                    resetSessionsState();
+                    loadSessions(1);
                 } else {
                     // Handle specific error cases
                     if (response.status === 403) {
@@ -993,6 +1322,12 @@
 
         async function loadSession(sessionId) {
             try {
+                // Close mobile sidebar when session is selected
+                const sidebar = document.getElementById('sessionsSidebar');
+                if (sidebar && sidebar.classList.contains('mobile-open')) {
+                    sidebar.classList.remove('mobile-open');
+                }
+                
                 // Reset tree path when loading a new session
                 currentTreePath = null;
                 
@@ -1022,20 +1357,36 @@
                         });
                         
                         if (validPath) {
-                            currentTreePath = savedTreePath;
-                            console.log('Restored saved tree path:', savedTreePath);
+                            // Kaydedilmiş path'i genişletmeye çalış
+                            console.log('📋 Extending saved tree path with new messages...');
+                            const extendedPath = calculateLatestBranchPath(messages, savedTreePath);
+                            
+                            // Eğer path uzadıysa, yeni path'i kaydet
+                            if (extendedPath !== savedTreePath) {
+                                console.log('🔄 Extended saved path with new messages');
+                                console.log('Old path:', savedTreePath);
+                                console.log('New path:', extendedPath);
+                                currentTreePath = extendedPath;
+                                saveLastTreePath(sessionId, currentTreePath);
+                            } else {
+                                currentTreePath = savedTreePath;
+                                console.log('Restored saved tree path (no new messages):', savedTreePath);
+                            }
                         } else {
-                            // Fallback to main tree path if saved path is invalid
-                            currentTreePath = calculateMainTreePath(messages);
-                            console.log('Saved tree path invalid, using main path:', currentTreePath);
+                            // Kaydedilmiş path geçersizse, ana daldan başlayıp genişlet
+                            console.log('Saved tree path invalid, calculating from main tree...');
+                            currentTreePath = calculateMainTreePathWithFailsafe(messages, '');
+                            console.log('New calculated path:', currentTreePath);
+                            saveLastTreePath(sessionId, currentTreePath);
                         }
                     } else {
-                        // Calculate the default tree path for the main conversation branch
+                        // Hiç kaydedilmiş path yok, ana daldan başlayıp genişlet
                         if (messages.length > 0) {
-                            currentTreePath = calculateMainTreePath(messages);
-                            // Save the initial main tree path to database
+                            console.log('🆕 No saved path, calculating from main tree...');
+                            currentTreePath = calculateMainTreePathWithFailsafe(messages, '');
+                            // İlk path'i veritabanına kaydet
                             saveLastTreePath(sessionId, currentTreePath);
-                            // Calculated main tree path
+                            console.log('💾 Saved initial tree path:', currentTreePath);
                         }
                     }
                     
@@ -1064,6 +1415,15 @@
 
         function displayMessages(messages) {
             const chatMessages = document.getElementById('chatMessages');
+            
+            // Store typing indicator state before clearing
+            const wasTypingActive = isTypingIndicatorActive;
+            const typingIndicator = document.getElementById('typingIndicator');
+            let typingHTML = '';
+            if (typingIndicator && wasTypingActive) {
+                typingHTML = typingIndicator.outerHTML;
+            }
+            
             chatMessages.innerHTML = '';
 
             if (messages.length === 0) {
@@ -1107,6 +1467,39 @@
                 }
             });
             
+            // Restore typing indicator if it was active
+            if (typingHTML && wasTypingActive) {
+                chatMessages.insertAdjacentHTML('beforeend', typingHTML);
+                // Restore global state
+                isTypingIndicatorActive = true;
+            }
+            
+            // Ensure all bot messages have copy buttons (for loaded sessions)
+            setTimeout(() => {
+                const botMessages = chatMessages.querySelectorAll('.bot-message');
+                botMessages.forEach(messageDiv => {
+                    // Check if copy button already exists
+                    if (!messageDiv.querySelector('.message-copy-container')) {
+                        const messageId = messageDiv.dataset.messageId;
+                        if (messageId) {
+                            const copyButtonDiv = document.createElement('div');
+                            copyButtonDiv.className = 'message-copy-container';
+                            
+                            copyButtonDiv.innerHTML = `
+                                <button class="message-copy-btn" onclick="copyMessage('${messageId}')" title="Copy message">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                                        <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                                    </svg>
+                                </button>
+                            `;
+                            
+                            messageDiv.appendChild(copyButtonDiv);
+                        }
+                    }
+                });
+            }, 100);
+            
             // Scroll to bottom after loading all messages (initial session load)
             chatMessages.scrollTop = chatMessages.scrollHeight;
             
@@ -1119,6 +1512,10 @@
             currentTreePath = null;
             currentConversationBranches = {};
             currentSessionMessages = []; // Clear session messages for new session
+            
+            // Clear any existing typing indicator since this is a fresh start
+            hideTypingIndicator();
+            
             document.getElementById('chatMessages').innerHTML = `
                 <div class="welcome-message">
                     <h3>New Conversation Started!</h3>
@@ -1154,41 +1551,6 @@
                 url.searchParams.delete('session');
             }
             window.history.pushState({}, '', url);
-        }
-
-        function updatePagination(hasNext, hasPrevious) {
-            // Updating pagination controls
-
-            const prevBtn = document.getElementById('prevPage');
-            const nextBtn = document.getElementById('nextPage');
-
-            prevBtn.disabled = !hasPrevious;
-            nextBtn.disabled = !hasNext;
-
-            document.getElementById('pageInfo').textContent = `Page ${currentPage}`;
-
-            // Button states updated
-        }
-
-        function changePage(page) {
-            if (page < 1) {
-                return;
-            }
-
-            // Check if the button should be disabled
-            const prevBtn = document.getElementById('prevPage');
-            const nextBtn = document.getElementById('nextPage');
-
-            // Don't allow clicking if button is disabled
-            if (page < currentPage && prevBtn.disabled) {
-                return;
-            }
-            if (page > currentPage && nextBtn.disabled) {
-                return;
-            }
-
-            console.log(`Loading sessions for page: ${page}`);
-            loadSessions(page);
         }
 
         function toggleMobileSidebar() {
@@ -1243,10 +1605,19 @@
 
             // 4) Restore each code block, escaping its interior but leaving its newlines
             codeBlocks.forEach(({ lang, code }, i) => {
+                const blockId = `code-block-${Date.now()}-${i}`;
                 const blockHtml =
-                    `<div class="code-block">` +
-                    `<div class="code-header">${lang}</div>` +
-                    `<pre><code class="language-${lang}">` +
+                    `<div class="code-block" data-block-id="${blockId}">` +
+                    `<div class="code-header">` +
+                    `<span class="code-language">${lang}</span>` +
+                    `<button class="code-copy-btn" onclick="copyCodeBlock('${blockId}')" title="Copy code">` +
+                    `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">` +
+                    `<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>` +
+                    `<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>` +
+                    `</svg>` +
+                    `</button>` +
+                    `</div>` +
+                    `<pre><code class="language-${lang}" data-code="${escapeHtml(code).replace(/"/g, '&quot;')}">` +
                     escapeHtml(code) +
                     `</code></pre>` +
                     `</div>`;
@@ -1254,6 +1625,200 @@
             });
 
             return text;
+        }
+
+        // Copy code block functionality
+        function copyCodeBlock(blockId) {
+            try {
+                const codeBlock = document.querySelector(`[data-block-id="${blockId}"]`);
+                if (!codeBlock) {
+                    console.error('Code block not found:', blockId);
+                    return;
+                }
+                
+                const codeElement = codeBlock.querySelector('code');
+                if (!codeElement) {
+                    console.error('Code element not found in block:', blockId);
+                    return;
+                }
+                
+                // Get the raw code from data attribute or text content
+                const codeText = codeElement.dataset.code || codeElement.textContent;
+                
+                // Use async clipboard API with fallback
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(codeText).then(() => {
+                        showCopySuccess(codeBlock.querySelector('.code-copy-btn'));
+                    }).catch((err) => {
+                        console.error('Clipboard API failed:', err);
+                        fallbackCopyToClipboard(codeText, codeBlock.querySelector('.code-copy-btn'));
+                    });
+                } else {
+                    fallbackCopyToClipboard(codeText, codeBlock.querySelector('.code-copy-btn'));
+                }
+            } catch (error) {
+                console.error('Error copying code block:', error);
+            }
+        }
+
+        // Copy entire message functionality
+        function copyMessage(messageId) {
+            try {
+                const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
+                if (!messageDiv) {
+                    console.error('Message not found:', messageId);
+                    return;
+                }
+                
+                const messageContent = messageDiv.querySelector('.message-content');
+                if (!messageContent) {
+                    console.error('Message content not found for:', messageId);
+                    return;
+                }
+                
+                // Get the plain text content, preserving line breaks
+                const textContent = getMessagePlainText(messageContent);
+                
+                // Use async clipboard API with fallback
+                if (navigator.clipboard && window.isSecureContext) {
+                    navigator.clipboard.writeText(textContent).then(() => {
+                        const copyBtn = messageDiv.querySelector('.message-copy-btn');
+                        showCopySuccess(copyBtn);
+                    }).catch((err) => {
+                        console.error('Clipboard API failed:', err);
+                        const copyBtn = messageDiv.querySelector('.message-copy-btn');
+                        fallbackCopyToClipboard(textContent, copyBtn);
+                    });
+                } else {
+                    const copyBtn = messageDiv.querySelector('.message-copy-btn');
+                    fallbackCopyToClipboard(textContent, copyBtn);
+                }
+            } catch (error) {
+                console.error('Error copying message:', error);
+            }
+        }
+
+        // Fallback copy function for older browsers or non-secure contexts
+        function fallbackCopyToClipboard(text, button) {
+            try {
+                const textArea = document.createElement('textarea');
+                textArea.value = text;
+                textArea.style.position = 'fixed';
+                textArea.style.left = '-999999px';
+                textArea.style.top = '-999999px';
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                
+                if (successful) {
+                    showCopySuccess(button);
+                } else {
+                    console.error('Fallback copy failed');
+                    showCopyError(button);
+                }
+            } catch (err) {
+                console.error('Fallback copy error:', err);
+                showCopyError(button);
+            }
+        }
+
+        function getMessagePlainText(messageContent) {
+            // Clone the content to avoid modifying the original
+            const clone = messageContent.cloneNode(true);
+            
+            // Replace code blocks with their plain text
+            const codeBlocks = clone.querySelectorAll('.code-block');
+            codeBlocks.forEach(block => {
+                const langElement = block.querySelector('.code-language');
+                const codeElement = block.querySelector('code');
+                if (codeElement) {
+                    const lang = langElement ? langElement.textContent.trim() : '';
+                    const code = codeElement.dataset.code || codeElement.textContent;
+                    const replacement = document.createTextNode(`\`\`\`${lang}\n${code}\n\`\`\``);
+                    block.replaceWith(replacement);
+                }
+            });
+            
+            // Handle other elements before getting text content
+            const strongElements = clone.querySelectorAll('strong');
+            strongElements.forEach(el => {
+                el.replaceWith(document.createTextNode(`**${el.textContent}**`));
+            });
+            
+            const emElements = clone.querySelectorAll('em');
+            emElements.forEach(el => {
+                el.replaceWith(document.createTextNode(`*${el.textContent}*`));
+            });
+            
+            // Replace <br> tags with newlines
+            clone.innerHTML = clone.innerHTML.replace(/<br\s*\/?>/gi, '\n');
+            
+            // Replace list items with markdown format
+            const listItems = clone.querySelectorAll('li');
+            listItems.forEach(li => {
+                li.textContent = `• ${li.textContent}`;
+            });
+            
+            // Handle nested lists
+            const lists = clone.querySelectorAll('ul');
+            lists.forEach(ul => {
+                const items = Array.from(ul.querySelectorAll('li')).map(li => li.textContent).join('\n');
+                ul.replaceWith(document.createTextNode(items));
+            });
+            
+            // Get the final text content and clean up extra whitespace
+            return clone.textContent.replace(/\n{3,}/g, '\n\n').trim();
+        }
+
+        function showCopySuccess(button) {
+            if (!button) return;
+            
+            const originalContent = button.innerHTML;
+            const originalTitle = button.title;
+            
+            // Show success icon
+            button.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="20,6 9,17 4,12"></polyline>
+                </svg>
+            `;
+            button.title = 'Copied!';
+            button.classList.add('copy-success');
+            
+            // Reset after 2 seconds
+            setTimeout(() => {
+                button.innerHTML = originalContent;
+                button.title = originalTitle;
+                button.classList.remove('copy-success');
+            }, 2000);
+        }
+
+        function showCopyError(button) {
+            if (!button) return;
+            
+            const originalContent = button.innerHTML;
+            const originalTitle = button.title;
+            
+            // Show error icon
+            button.innerHTML = `
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="10"></circle>
+                    <line x1="15" y1="9" x2="9" y2="15"></line>
+                    <line x1="9" y1="9" x2="15" y2="15"></line>
+                </svg>
+            `;
+            button.title = 'Copy failed';
+            button.classList.add('copy-error');
+            
+            // Reset after 2 seconds
+            setTimeout(() => {
+                button.innerHTML = originalContent;
+                button.title = originalTitle;
+                button.classList.remove('copy-error');
+            }, 2000);
         }
 
         // Input blocking functionality
@@ -1571,13 +2136,38 @@
         function editMessage(button) {
             const messageDiv = button.closest('.message');
             if (messageDiv) {
+                // Store scroll positions before editing
+                const chatMessages = document.getElementById('chatMessages');
+                const scrollPos = chatMessages ? chatMessages.scrollTop : 0;
+                const windowScrollPos = window.pageYOffset;
+                
                 const originalMessage = messageDiv.dataset.originalMessage || messageDiv.querySelector('.message-content').textContent;
                 // Remove the failed message
                 messageDiv.remove();
                 // Put the message back in the input for editing
-                document.getElementById('messageInput').value = originalMessage;
-                document.getElementById('messageInput').focus();
-                adjustTextareaHeight();
+                const messageInput = document.getElementById('messageInput');
+                messageInput.value = originalMessage;
+                
+                // Enhanced focus without causing scroll jump
+                setTimeout(() => {
+                    messageInput.focus();
+                    adjustTextareaHeight();
+                    
+                    // Restore both scroll positions with multiple attempts
+                    [10, 20, 50, 100].forEach(delay => {
+                        setTimeout(() => {
+                            if (chatMessages) {
+                                chatMessages.scrollTop = scrollPos;
+                            }
+                            if (window.pageYOffset !== windowScrollPos) {
+                                window.scrollTo(0, windowScrollPos);
+                                document.documentElement.scrollTop = windowScrollPos;
+                                document.body.scrollTop = windowScrollPos;
+                            }
+                        }, delay);
+                    });
+                }, 10);
+                
                 // Unblock input in case it was blocked
                 setWaitingForResponse(false);
             }
@@ -1589,12 +2179,18 @@
             
             const controlsDiv = document.createElement('div');
             controlsDiv.className = 'user-edit-controls';
+            controlsDiv.id = `edit-controls-${messageData.id}`;
             
             controlsDiv.innerHTML = `
                 <button class="edit-message-btn" onclick="editUserMessage('${messageData.id}', '${originalMessage.replace(/'/g, "\\'")}')">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                        <path d="m18.5 2.5 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                    </svg>
+                </button>
+                <button class="cancel-edit-btn" id="cancel-edit-${messageData.id}" onclick="cancelUserMessageEdit('${messageData.id}')" style="display: none;">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
                     </svg>
                 </button>
             `;
@@ -1648,13 +2244,41 @@
                 return;
             }
             
+            // Show cancel button and hide edit button
+            const editBtn = messageDiv.querySelector('.edit-message-btn');
+            const cancelBtn = messageDiv.querySelector('.cancel-edit-btn');
+            
+            if (editBtn) editBtn.style.display = 'none';
+            if (cancelBtn) cancelBtn.style.display = 'inline-flex';
+            
             // Start inline editing
             startInlineEdit(messageDiv, messageId, originalMessage);
+        }
+        
+        function cancelUserMessageEdit(messageId) {
+            // Find the message div
+            const messageDiv = document.querySelector(`[data-message-id="${messageId}"]`);
+            if (!messageDiv) return;
+            
+            // Hide cancel button and show edit button
+            const editBtn = messageDiv.querySelector('.edit-message-btn');
+            const cancelBtn = messageDiv.querySelector('.cancel-edit-btn');
+            
+            if (editBtn) editBtn.style.display = 'inline-flex';
+            if (cancelBtn) cancelBtn.style.display = 'none';
+            
+            // Cancel the inline editing
+            cancelInlineEdit(messageDiv);
         }
         
         function startInlineEdit(messageDiv, messageId, originalMessage) {
             const messageContent = messageDiv.querySelector('.message-content');
             if (!messageContent) return;
+            
+            // Store scroll positions before editing
+            const chatMessages = document.getElementById('chatMessages');
+            const scrollPos = chatMessages ? chatMessages.scrollTop : 0;
+            const windowScrollPos = window.pageYOffset;
             
             // Store original content
             const originalContentHTML = messageContent.innerHTML;
@@ -1690,14 +2314,38 @@
             messageContent.innerHTML = '';
             messageContent.appendChild(editContainer);
             
-            // Focus and select text
-            textarea.focus();
-            textarea.select();
+            // Enhanced focus with aggressive scroll protection
+            setTimeout(() => {
+                textarea.focus();
+                textarea.select();
+                
+                // Multiple restoration attempts for both chat and window scroll
+                [10, 20, 50, 100, 200].forEach(delay => {
+                    setTimeout(() => {
+                        if (chatMessages) {
+                            chatMessages.scrollTop = scrollPos;
+                        }
+                        if (window.pageYOffset !== windowScrollPos) {
+                            window.scrollTo(0, windowScrollPos);
+                            document.documentElement.scrollTop = windowScrollPos;
+                            document.body.scrollTop = windowScrollPos;
+                        }
+                    }, delay);
+                });
+            }, 10);
             
             // Auto-resize textarea
             function adjustTextareaHeight() {
                 textarea.style.height = 'auto';
-                textarea.style.height = Math.max(textarea.scrollHeight, 44) + 'px';
+                const newHeight = Math.max(textarea.scrollHeight, 44);
+                textarea.style.height = newHeight + 'px';
+                
+                // Show scrollbar only if content exceeds reasonable height
+                if (textarea.scrollHeight > 200) {
+                    textarea.style.overflowY = 'auto';
+                } else {
+                    textarea.style.overflowY = 'hidden';
+                }
             }
             
             textarea.addEventListener('input', adjustTextareaHeight);
@@ -1715,7 +2363,13 @@
             
             // Handle cancel button click
             cancelButton.addEventListener('click', () => {
-                cancelEdit(messageContent, originalContentHTML);
+                const messageDiv = messageContent.closest('.message');
+                const messageId = messageDiv ? messageDiv.dataset.messageId : null;
+                if (messageId) {
+                    cancelUserMessageEdit(messageId);
+                } else {
+                    cancelEdit(messageContent, originalContentHTML);
+                }
             });
             
             // Handle keyboard shortcuts
@@ -1727,10 +2381,24 @@
                         submitEditedMessage(messageId, newMessage, messageDiv, originalContentHTML);
                     } else {
                         cancelEdit(messageContent, originalContentHTML);
+                        // Reset buttons when canceling
+                        const messageDiv = messageContent.closest('.message');
+                        if (messageDiv) {
+                            const editBtn = messageDiv.querySelector('.edit-message-btn');
+                            const cancelBtn = messageDiv.querySelector('.cancel-edit-btn');
+                            if (editBtn) editBtn.style.display = 'inline-flex';
+                            if (cancelBtn) cancelBtn.style.display = 'none';
+                        }
                     }
                 } else if (e.key === 'Escape') {
                     e.preventDefault();
-                    cancelEdit(messageContent, originalContentHTML);
+                    const messageDiv = messageContent.closest('.message');
+                    const messageId = messageDiv ? messageDiv.dataset.messageId : null;
+                    if (messageId) {
+                        cancelUserMessageEdit(messageId);
+                    } else {
+                        cancelEdit(messageContent, originalContentHTML);
+                    }
                 }
             });
         }
@@ -1739,12 +2407,97 @@
             messageContent.innerHTML = originalContentHTML;
         }
         
+        function cancelInlineEdit(messageDiv) {
+            // Find the message content and restore original
+            const messageContent = messageDiv.querySelector('.message-content');
+            if (!messageContent) return;
+            
+            // Get the original message text from the data attribute or reconstruct it
+            const messageId = messageDiv.dataset.messageId;
+            const originalMessage = messageDiv.dataset.originalMessage;
+            
+            if (originalMessage) {
+                // Restore the original message content
+                messageContent.innerHTML = `<div class="message-text">${originalMessage}</div>`;
+            } else {
+                // If no stored original, try to get from session messages
+                const sessionMessage = currentSessionMessages.find(msg => 
+                    (msg.id || msg.message_id).toString() === messageId.toString()
+                );
+                if (sessionMessage) {
+                    messageContent.innerHTML = `<div class="message-text">${sessionMessage.content}</div>`;
+                }
+            }
+        }
+        
+        function removeAllSubsequentMessages(fromMessageId) {
+            // This function removes all messages that come after the specified message ID
+            // in the conversation flow, creating a clean slate for the new branch
+            
+            console.log(`Removing all messages after message ID: ${fromMessageId}`);
+            
+            if (!currentSessionMessages || currentSessionMessages.length === 0) {
+                console.log('No session messages available for cleanup');
+                return;
+            }
+            
+            // Find the message we're editing
+            const editMessage = currentSessionMessages.find(msg => 
+                (msg.id || msg.message_id).toString() === fromMessageId.toString()
+            );
+            
+            if (!editMessage) {
+                console.log(`Message ${fromMessageId} not found in session messages`);
+                return;
+            }
+            
+            // Get the creation time of the edited message for comparison
+            const editMessageTime = new Date(editMessage.created_at);
+            
+            // Find all messages that come after this message chronologically
+            const messagesToRemove = currentSessionMessages.filter(msg => {
+                const msgTime = new Date(msg.created_at);
+                return msgTime > editMessageTime;
+            });
+            
+            console.log(`Found ${messagesToRemove.length} messages to remove after edit point`);
+            
+            // Remove these messages from the DOM
+            messagesToRemove.forEach(msg => {
+                const msgId = msg.id || msg.message_id;
+                const messageDiv = document.querySelector(`[data-message-id="${msgId}"]`);
+                if (messageDiv) {
+                    console.log(`Removing message ${msgId} (${msg.sender}) from DOM`);
+                    messageDiv.remove();
+                } else {
+                    console.log(`Message ${msgId} not found in DOM (may have been already removed)`);
+                }
+            });
+            
+            // Also remove any messages that are directly connected to the edited message
+            // (immediate responses that should be replaced)
+            if (editMessage.connects_to) {
+                const connectedIds = editMessage.connects_to.split(',').filter(id => id.trim() !== '');
+                connectedIds.forEach(connectedId => {
+                    const connectedDiv = document.querySelector(`[data-message-id="${connectedId}"]`);
+                    if (connectedDiv) {
+                        console.log(`Removing directly connected message ${connectedId} from DOM`);
+                        connectedDiv.remove();
+                    }
+                });
+            }
+        }
+        
         async function submitEditedMessage(messageId, newMessage, messageDiv, originalContentHTML) {
             const messageContent = messageDiv.querySelector('.message-content');
             
             // Replace the edited message content with the new message immediately
             const processedMessage = processCodeBlocks(newMessage);
             messageContent.innerHTML = processedMessage;
+            
+            // IMPORTANT: Remove ALL subsequent messages since we're creating a new branch
+            // This includes the immediate bot response and everything that followed
+            removeAllSubsequentMessages(messageId);
             
             // Show typing indicator for bot response
             showTypingIndicator();
@@ -1786,6 +2539,24 @@
                     const newBotMessage = data.messages.find(m => m.sender === 'bot');
                     
                     if (newUserMessage && newBotMessage) {
+                        // Clean up session messages data - remove all messages after the edit point chronologically
+                        const editMessage = currentSessionMessages.find(msg => 
+                            (msg.id || msg.message_id).toString() === messageId.toString()
+                        );
+                        
+                        if (editMessage) {
+                            const editMessageTime = new Date(editMessage.created_at);
+                            
+                            // Filter out messages that come after the edited message chronologically
+                            const originalLength = currentSessionMessages.length;
+                            currentSessionMessages = currentSessionMessages.filter(msg => {
+                                const msgTime = new Date(msg.created_at);
+                                return msgTime <= editMessageTime;
+                            });
+                            
+                            console.log(`Cleaned session messages: removed ${originalLength - currentSessionMessages.length} messages after edit point, kept ${currentSessionMessages.length} messages`);
+                        }
+                        
                         // Add the new bot message to the chat immediately
                         const botDiv = addMessageToChat('bot', newBotMessage.content, null, false, newBotMessage);
                         
@@ -1795,7 +2566,7 @@
                         messageDiv.dataset.connectsTo = newUserMessage.connects_to || '';
                         messageDiv.dataset.connections = newUserMessage.connections || 0;
                         
-                        // Update stored session messages with the new branch messages
+                        // Add the new branch messages to session data
                         if (data.messages) {
                             data.messages.forEach(newMsg => {
                                 // Check if message already exists (avoid duplicates)
@@ -1804,9 +2575,11 @@
                                 );
                                 if (existingIndex === -1) {
                                     currentSessionMessages.push(newMsg);
+                                    console.log(`Added new message ${newMsg.id} (${newMsg.sender}) to session data`);
                                 } else {
                                     // Update existing message with new data
                                     currentSessionMessages[existingIndex] = newMsg;
+                                    console.log(`Updated existing message ${newMsg.id} (${newMsg.sender}) in session data`);
                                 }
                             });
                         }
@@ -1828,27 +2601,6 @@
                                 
                                 // Artificially increase connections count for proper branching display
                                 parentMsg.connections = Math.max(connectsToArray.length, 2);
-                            }
-                        }
-                        
-                        // Delete only the newly added bot response to prevent duplicates
-                        // Find and remove the bot message that was just added (should be the one with matching ID)
-                        const addedBotDiv = document.querySelector(`[data-message-id="${newBotMessage.id}"]`);
-                        if (addedBotDiv && addedBotDiv.classList.contains('bot-message')) {
-                            // Check if this is actually a duplicate by counting bot messages with same content
-                            const allBotMessages = document.querySelectorAll('.bot-message:not(.typing-indicator)');
-                            let duplicateCount = 0;
-                            allBotMessages.forEach(botMsg => {
-                                const content = botMsg.querySelector('.message-content')?.textContent?.trim();
-                                if (content === newBotMessage.content.trim()) {
-                                    duplicateCount++;
-                                }
-                            });
-                            
-                            // Only remove if we have a genuine duplicate (more than 1 with same content)
-                            if (duplicateCount > 1) {
-                                addedBotDiv.remove();
-                                console.log('Removed duplicate bot message with ID:', newBotMessage.id);
                             }
                         }
                         
@@ -1898,6 +2650,13 @@
                         // Check if session title has changed and update sidebar
                         if (data.title && currentSessionId && data.session_id === currentSessionId) {
                             updateSessionTitleInSidebar(currentSessionId, data.title);
+                        }
+                        
+                        // Refresh sessions list to reflect potential title changes and reorder by lastChangeMade
+                        if (currentSessionId && !isGuest) {
+                            console.log('🔄 Refreshing sessions list after message edit/branch creation...');
+                            resetSessionsState();
+                            loadSessions(1);
                         }
                         
                         showSuccessMessage('Message edited and new branch created! Showing new branch.');
@@ -1969,8 +2728,11 @@
         async function saveLastTreePath(sessionId, treePath) {
             if (!sessionId || sessionId === 'guest' || !treePath) return;
             
+            // Önce tree path'i genişletmeye çalış
+            const extendedPath = await extendTreePathWithNewMessages(sessionId, treePath);
+            
             try {
-                console.log(`Saving tree path for session ${sessionId}: ${treePath}`);
+                console.log(`💾 Saving tree path for session ${sessionId}: ${extendedPath}`);
                 const response = await makeAuthenticatedRequest(`/chatbot/save-tree-path`, {
                     method: 'POST',
                     headers: {
@@ -1978,17 +2740,57 @@
                     },
                     body: JSON.stringify({
                         session_id: sessionId,
-                        tree_path: treePath
+                        tree_path: extendedPath
                     })
                 });
                 
                 if (response.ok) {
-                    console.log('Tree path saved successfully');
+                    console.log('✅ Tree path saved successfully');
+                    // Global currentTreePath'i de güncelle
+                    if (sessionId === currentSessionId) {
+                        currentTreePath = extendedPath;
+                    }
                 } else {
-                    console.warn('Failed to save tree path:', await response.text());
+                    console.warn('❌ Failed to save tree path:', await response.text());
                 }
             } catch (error) {
-                console.error('Error saving tree path:', error);
+                console.error('❌ Error saving tree path:', error);
+            }
+        }
+
+        async function extendTreePathWithNewMessages(sessionId, currentPath) {
+            try {
+                console.log('🔧 Extending tree path with new messages...');
+                console.log('Current path:', currentPath);
+                
+                // Session mesajlarını al
+                const response = await makeAuthenticatedRequest(`/chatbot/message?session=${sessionId}`, {
+                    method: 'GET'
+                });
+                
+                if (!response.ok) {
+                    console.warn('Failed to fetch session messages for path extension');
+                    return currentPath;
+                }
+                
+                const data = await response.json();
+                const messages = data.data || [];
+                
+                // Tree path'i genişlet
+                const extendedPath = calculateLatestBranchPath(messages, currentPath);
+                
+                if (extendedPath !== currentPath) {
+                    console.log('🔄 Path extended!');
+                    console.log('Old path:', currentPath);
+                    console.log('New path:', extendedPath);
+                } else {
+                    console.log('📋 No new messages to extend path');
+                }
+                
+                return extendedPath;
+            } catch (error) {
+                console.error('Error extending tree path:', error);
+                return currentPath; // Hata durumunda mevcut path'i döndür
             }
         }
 
@@ -2161,6 +2963,120 @@
             const treePath = path.join(',');
             // Main tree path calculated
             return treePath;
+        }
+
+        // FAILSAFE: Calculate path to the latest (most recent) branch tip
+        function calculateLatestBranchPath(messages, currentTreePath = '') {
+            console.log('🔧 SIMPLE: Extending tree path with new messages...');
+            console.log('Starting with current tree path:', currentTreePath);
+            
+            if (!messages || messages.length === 0) {
+                console.log('No messages found');
+                return currentTreePath || '';
+            }
+            
+            // Başlangıç path'i al - boşsa boş string kullan
+            let extendedPath = currentTreePath || '';
+            
+            // Path'in son elemanını bul (virgüllerle ayrılmış)
+            const pathParts = extendedPath.split(',').filter(part => part !== '');
+            let lastMessageId = pathParts.length > 0 ? pathParts[pathParts.length - 1] : '';
+            
+            console.log('Last message ID in path:', lastMessageId);
+            
+            // Eğer path boşsa, ana daldan başla
+            if (!lastMessageId) {
+                const firstUserMessage = messages.find(msg => msg.sender === 'user' && (!msg.connected_from || msg.connected_from === 'main'));
+                if (firstUserMessage) {
+                    extendedPath = ',' + firstUserMessage.id;
+                    lastMessageId = firstUserMessage.id.toString();
+                    console.log('Started path with first user message:', lastMessageId);
+                } else {
+                    console.log('No starting user message found');
+                    return '';
+                }
+            }
+            
+            // Döngü: son mesajın connects_to'suna bak ve varsa ekle
+            let continueLoop = true;
+            let loopCount = 0;
+            const maxLoops = 100; // Sonsuz döngü koruması
+            
+            while (continueLoop && loopCount < maxLoops) {
+                loopCount++;
+                console.log(`Loop ${loopCount}: Checking message ${lastMessageId} for connects_to...`);
+                
+                // Son mesajı bul
+                const lastMessage = messages.find(msg => msg.id.toString() === lastMessageId);
+                if (!lastMessage) {
+                    console.log('Last message not found, stopping');
+                    break;
+                }
+                
+                // connects_to kısmını kontrol et
+                if (!lastMessage.connects_to || lastMessage.connects_to.trim() === '') {
+                    console.log('No connects_to found, stopping');
+                    continueLoop = false;
+                } else {
+                    // connects_to varsa, ilk değeri al (virgül varsa ilkini al)
+                    const connectsToList = lastMessage.connects_to.split(',').filter(id => id.trim() !== '');
+                    if (connectsToList.length > 0) {
+                        const nextMessageId = connectsToList[0].trim(); // İlk değeri al
+                        console.log(`Found connects_to: ${nextMessageId}`);
+                        
+                        // Bu mesajın gerçekten var olduğunu kontrol et
+                        const nextMessage = messages.find(msg => msg.id.toString() === nextMessageId);
+                        if (nextMessage) {
+                            extendedPath += ',' + nextMessageId;
+                            lastMessageId = nextMessageId;
+                            console.log('Extended path:', extendedPath);
+                        } else {
+                            console.log('Next message not found in messages list, stopping');
+                            continueLoop = false;
+                        }
+                    } else {
+                        console.log('Empty connects_to list, stopping');
+                        continueLoop = false;
+                    }
+                }
+            }
+            
+            if (loopCount >= maxLoops) {
+                console.warn('Maximum loop count reached, stopping to prevent infinite loop');
+            }
+            
+            console.log('🎯 Final extended path:', extendedPath);
+            return extendedPath;
+        }
+
+        // Enhanced calculateMainTreePath with failsafe
+        function calculateMainTreePathWithFailsafe(messages, savedTreePath = '') {
+            console.log('🚀 Calculating main tree path with failsafe...');
+            console.log('Using saved tree path as base:', savedTreePath);
+            
+            // Eğer kaydedilmiş bir tree path varsa, onu genişletmeye çalış
+            if (savedTreePath && savedTreePath.trim() !== '') {
+                console.log('📋 Using saved tree path as starting point');
+                return calculateLatestBranchPath(messages, savedTreePath);
+            }
+            
+            // Eğer kaydedilmiş path yoksa, ana dalı hesapla ve genişlet
+            console.log('🔧 No saved path, calculating from main tree');
+            const mainPath = calculateMainTreePath(messages);
+            
+            // Ana dalı hesapladıktan sonra genişlet
+            return calculateLatestBranchPath(messages, mainPath);
+        }
+
+        // Helper function to get the timestamp of the last message in a path
+        function getPathLastTimestamp(messages, treePath) {
+            const pathIds = treePath.split(',').filter(id => id !== '');
+            if (pathIds.length === 0) return new Date(0);
+            
+            const lastPathId = pathIds[pathIds.length - 1];
+            const lastMessage = messages.find(msg => msg.id.toString() === lastPathId);
+            
+            return lastMessage ? new Date(lastMessage.timestamp) : new Date(0);
         }
 
         function getCurrentBranchIndex(botMessageId, branchIds) {
@@ -2365,6 +3281,15 @@
         
         function displayMessagesWithFiltering(messages) {
             const chatMessages = document.getElementById('chatMessages');
+            
+            // Store typing indicator state before clearing
+            const wasTypingActive = isTypingIndicatorActive;
+            const typingIndicator = document.getElementById('typingIndicator');
+            let typingHTML = '';
+            if (typingIndicator && wasTypingActive) {
+                typingHTML = typingIndicator.outerHTML;
+            }
+            
             chatMessages.innerHTML = '';
 
             if (messages.length === 0) {
@@ -2417,6 +3342,13 @@
                 }
             });
             
+            // Restore typing indicator if it was active
+            if (typingHTML && wasTypingActive) {
+                chatMessages.insertAdjacentHTML('beforeend', typingHTML);
+                // Restore global state
+                isTypingIndicatorActive = true;
+            }
+            
             // displayMessagesWithFiltering completed
             
             // Update tree path display
@@ -2455,10 +3387,12 @@
                     const messages = data.data || [];
                     currentSessionMessages = messages;
                     
-                    // Calculate the main tree path
+                    // Ana daldan başlayıp en son mesajlara kadar genişlet
                     if (messages.length > 0) {
-                        currentTreePath = calculateMainTreePath(messages);
-                        // Save the main tree path to database
+                        console.log('🔄 Return to main branch - calculating extended main path...');
+                        currentTreePath = calculateMainTreePathWithFailsafe(messages, '');
+                        console.log('🔄 Return to main branch - new path:', currentTreePath);
+                        // Yeni path'i veritabanına kaydet
                         saveLastTreePath(currentSessionId, currentTreePath);
                     } else {
                         currentTreePath = null;
@@ -2541,6 +3475,85 @@
                 }
             }, 3000);
         }
+
+        // Mobile viewport height fix for iOS Safari address bar
+        function setViewportHeight() {
+            let vh = window.innerHeight * 0.01;
+            document.documentElement.style.setProperty('--vh', `${vh}px`);
+        }
+
+        // Set initial viewport height
+        setViewportHeight();
+
+        // Handle layout reset for mobile/desktop transitions
+        function handleLayoutReset() {
+            // Force a reflow to ensure proper layout
+            document.body.offsetHeight;
+            
+            // Ensure chat messages scroll to bottom
+            const chatMessages = document.getElementById('chatMessages');
+            if (chatMessages) {
+                setTimeout(() => {
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                }, 50);
+            }
+        }
+
+        // Scroll to bottom utility function
+        function scrollToBottom() {
+            const chatMessages = document.getElementById('chatMessages');
+            if (chatMessages) {
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+        }
+
+        // Update viewport height on resize/orientation change
+        window.addEventListener('resize', () => {
+            setViewportHeight();
+            handleLayoutReset();
+        });
+        
+        window.addEventListener('orientationchange', () => {
+            // Close mobile sidebar on orientation change
+            const sidebar = document.getElementById('sessionsSidebar');
+            if (sidebar && sidebar.classList.contains('mobile-open')) {
+                sidebar.classList.remove('mobile-open');
+            }
+        });
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            // Setup all event listeners first
+            setupEventListeners();
+            
+            // Set initial viewport height
+            setViewportHeight();
+            
+            // Load sessions if authenticated
+            if (!isGuest) {
+                loadSessions();
+            }
+            
+            // Focus message input
+            const messageInput = document.getElementById('messageInput');
+            if (messageInput) {
+                messageInput.focus();
+            }
+        });
+
+        // Simple mobile focus behavior
+        (function initMobileFocusBehavior(){
+            const ta = document.getElementById('messageInput');
+            const chatMessages = document.getElementById('chatMessages');
+            if(!ta || !chatMessages) return;
+
+            ta.addEventListener('focus', () => {
+                // Natural behavior: just scroll messages to bottom
+                requestAnimationFrame(()=> {
+                    chatMessages.scrollTop = chatMessages.scrollHeight;
+                });
+            });
+        })();
     </script>
 </body>
 

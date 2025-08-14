@@ -2,9 +2,16 @@
 
 This guide will help you obtain the necessary API keys and configure your environment for the Flask JSON Chatbot.
 
+## AI Provider Selection
+
+You can choose between **Gemini** and **DeepSeek R1** as your AI provider by setting the `AI_PROVIDER` environment variable:
+
+- Set `AI_PROVIDER=gemini` to use Google Gemini (default)
+- Set `AI_PROVIDER=deepseek` to use DeepSeek R1
+
 ## Required API Keys
 
-### 1. Google Gemini API Key
+### 1. Google Gemini API Key (if using Gemini)
 
 The Gemini API key is required for AI-powered conversations and tool calling features.
 
@@ -32,6 +39,34 @@ The Gemini API key is required for AI-powered conversations and tool calling fea
 - Supports text generation, conversation, and tool calling
 - No billing setup required for basic usage
 
+### 2. DeepSeek API Key (if using DeepSeek)
+
+The DeepSeek API key is required when using DeepSeek R1 as your AI provider.
+
+#### How to Get Your DeepSeek API Key:
+
+1. **Visit DeepSeek Platform**
+   - Go to [https://platform.deepseek.com/](https://platform.deepseek.com/)
+   - Sign up for an account or sign in
+
+2. **Access API Keys**
+   - Navigate to your account dashboard
+   - Look for "API Keys" or "API Management" section
+
+3. **Create a New API Key**
+   - Click "Create API Key" or similar
+   - Give your key a name (e.g., "Flask Chatbot")
+   - Copy the generated key
+
+4. **Copy Your API Key**
+   - Copy the generated API key (it will look like: `sk-...`)
+   - ⚠️ **Important**: Store this key securely and never share it publicly
+
+#### DeepSeek R1 Features:
+- Advanced reasoning capabilities
+- Competitive pricing
+- High-quality responses
+
 ## Environment Configuration
 
 ### 1. Create Environment File
@@ -42,9 +77,18 @@ The Gemini API key is required for AI-powered conversations and tool calling fea
    ```
 
 2. **Edit the .env File**
-   Open `.env` in your text editor and add your key:
+   Open `.env` in your text editor and add your configuration:
+   
+   **For Gemini (default):**
    ```
+   AI_PROVIDER=gemini
    GEMINI_API_KEY=your_actual_gemini_api_key_here
+   ```
+   
+   **For DeepSeek R1:**
+   ```
+   AI_PROVIDER=deepseek
+   DEEPSEEK_API_KEY=your_actual_deepseek_api_key_here
    ```
 
 ### 2. Optional Environment Variables
@@ -64,11 +108,13 @@ flaskDebugging=false
 JWT_SECRET_KEY=your_jwt_secret_key_here
 ```
 
-## Example .env File
+## Example .env Files
 
-Here's what your complete `.env` file should look like:
-
+### For Gemini:
 ```
+# AI Provider Selection
+AI_PROVIDER=gemini
+
 # Required API Keys
 GEMINI_API_KEY=AIzaSyC1234567890abcdefghijklmnopqrstuvwxyz
 
@@ -82,6 +128,27 @@ flaskDebugging=false
 
 # JWT Secret (for secure authentication)
 JWT_SECRET_KEY=Kd8fJls9fj2LmPqR7vN4yBx3Wz6AeH2rT9mQ5kL8pX1nC4vS
+```
+
+### For DeepSeek R1:
+```
+# AI Provider Selection
+AI_PROVIDER=deepseek
+
+# Required API Keys
+DEEPSEEK_API_KEY=sk-1234567890abcdefghijklmnopqrstuvwxyz
+
+# Optional Server Configuration
+flaskIP=127.0.0.1
+flaskPort=5000
+
+# Development Settings
+debugging=false
+flaskDebugging=false
+
+# JWT Secret (for secure authentication)
+JWT_SECRET_KEY=Kd8fJls9fj2LmPqR7vN4yBx3Wz6AeH2rT9mQ5kL8pX1nC4vS
+```
 ```
 
 ## Security Best Practices
