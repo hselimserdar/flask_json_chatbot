@@ -1,65 +1,97 @@
-# Chatbot Tool Calling Features
+# Tool Calling Features
 
-The Flask chatbot includes web search and mathematical calculation capabilities powered by Gemini 2.0 Flash with tool calling functionality.
+AI-powered tool calling capabilities using Gemini 2.0 Flash/Deepseek V3 for web search and mathematical calculations.
 
-## Features Overview
+## Available Tools
 
-### Web Search
-- **Functionality**: Searches the web for current information using DuckDuckGo API
-- **Use Cases**: Current events, recent information, facts, or any queries requiring up-to-date knowledge
-- **Examples**:
-  - "What's the latest news about AI?"
-  - "Search for Python Flask tutorials"
-  - "Find information about the weather in New York"
+### Web Search Tool
+Real-time web search using DuckDuckGo API for current information and facts.
 
-### Mathematical Calculations
-- **Functionality**: Performs mathematical calculations and evaluations
-- **Use Cases**: Calculations, math problems, or mathematical expressions
-- **Supported Operations**: Basic arithmetic, trigonometry, logarithms, square roots, and advanced mathematical functions
-- **Examples**:
-  - "Calculate 15 * 8 + 32"
-  - "What is the square root of 144?"
-  - "Calculate sin(π/4)"
+**Detailed Use Cases:**
+- **Current Events**: "What happened in the latest SpaceX launch?"
+- **Weather Information**: "What's the current weather in Tokyo?"
+- **Stock Prices**: "What is Tesla's current stock price?"
+- **News Updates**: "Latest developments in renewable energy"
+- **Product Information**: "Reviews of iPhone 15 Pro"
+- **Technical Documentation**: "Python Flask best practices 2024"
+- **Travel Information**: "Flight delays at JFK airport today"
+- **Sports Results**: "Latest Premier League match results"
+- **Technology News**: "Recent AI breakthroughs this week"
+- **Academic Research**: "Latest studies on climate change"
+- **Market Trends**: "Cryptocurrency market analysis today"
+- **Health Information**: "WHO guidelines on vaccination"
+
+### Mathematical Calculation Tool
+Safe mathematical evaluation for calculations, equations, and mathematical analysis.
+
+**Detailed Use Cases:**
+- **Basic Arithmetic**: "Calculate 15% tip on $85.50"
+- **Percentage Calculations**: "What is 30% of 250?"
+- **Unit Conversions**: "Convert 75 Fahrenheit to Celsius"
+- **Geometry**: "Area of a circle with radius 12.5 cm"
+- **Financial Calculations**: "Compound interest on $5000 at 3.5% for 10 years"
+- **Trigonometry**: "Calculate sin(45°) + cos(30°)"
+- **Logarithms**: "What is log base 10 of 1000?"
+- **Square Roots**: "Square root of 289"
+- **Statistical Calculations**: "Standard deviation of [10, 15, 20, 25, 30]"
+- **Physics Calculations**: "Kinetic energy with mass 5kg and velocity 10m/s"
+- **Engineering Calculations**: "Power consumption: 12V × 3.5A"
+- **Scientific Notation**: "Express 0.000045 in scientific notation"
+
+## How Tool Calling Works
+
+### Automatic Detection Process
+1. **Message Analysis**: AI analyzes user query for tool usage indicators
+2. **Tool Selection**: Determines which tool(s) are needed (search, calculate, or both)
+3. **Tool Execution**: Automatically invokes appropriate tools with extracted parameters
+4. **Result Integration**: Seamlessly incorporates tool results into AI response
+5. **Enhanced Response**: User receives comprehensive answer with real-time data
+
+### Tool Integration
+- **Seamless Operation**: Tools work transparently without user intervention
+- **Smart Context**: AI understands when tools add value to responses
+- **Multiple Tools**: Can use both search and calculation in single response
+- **Error Handling**: Graceful fallback to base knowledge if tools fail
+- **Performance**: Fast execution with minimal response delays
 
 ## Technical Implementation
 
-### Modified Files
-- `tools.py` - Contains the tool implementations
-- `gemini_api.py` - Updated to support tool calling with Gemini 2.0 Flash
-- `chatbot_manage.py` - Modified to enable tools for main conversations
+### Core Files
+- `tools.py` - Tool function implementations
+- `gemini_api.py` - Gemini 2.0 Flash integration with tool calling
+- `chatbot_manage.py` - Tool enablement for conversations
 
-### Process Flow
-1. **Message Analysis**: User sends a message that may benefit from tool usage
-2. **Tool Detection**: Gemini AI analyzes the message and determines if tools are required
-3. **Tool Execution**: Appropriate tools are automatically invoked (web search or mathematical calculation)
-4. **Result Integration**: Tool results are seamlessly incorporated into the AI's response
-5. **Response Delivery**: User receives a comprehensive answer with real-time data or calculations
+### Security & Safety
+- **Safe Math Evaluation**: Restricted function access prevents code execution
+- **Rate Limiting**: Web search requests are rate-limited for stability
+- **API Security**: Secure DuckDuckGo API integration
+- **Error Boundaries**: Robust error handling prevents system crashes
+- **Input Validation**: All tool inputs are validated before execution
 
-### Security Implementation
-- **Mathematical Calculations**: Uses safe evaluation with restricted function access
-- **Web Search**: Rate-limited requests using trusted DuckDuckGo API
-- **Error Handling**: Graceful fallback mechanisms when tools are unavailable
+## Example Interactions
 
-## Usage Examples
+**Complex Query Example:**
+```
+User: "I need to calculate mortgage payments for a $300,000 loan at 6.5% interest for 30 years, and also find current mortgage rates in California"
 
-### Web Search Examples
-**User Query**: "What are the latest developments in artificial intelligence?"  
-**System Response**: Searches web and provides current AI news and developments
+AI Response: 
+1. Calculates monthly payment: $1,896.20
+2. Searches web for current CA mortgage rates
+3. Provides comprehensive answer with both calculation and current market data
+```
 
-**User Query**: "Find me information about Flask web framework"  
-**System Response**: Searches and provides comprehensive Flask information
+**Multi-Tool Usage:**
+```
+User: "What's the current Bitcoin price and how much would 0.5 BTC be worth?"
 
-### Mathematical Calculation Examples
-**User Query**: "I need to calculate 25% of 840"  
-**System Response**: Calculates: 0.25 * 840 = 210
+AI Response:
+1. Searches for current Bitcoin price
+2. Calculates 0.5 × current price
+3. Provides both current market data and calculated value
+```
 
-**User Query**: "What's the area of a circle with radius 7?"  
-**System Response**: Calculates: π * 7² ≈ 153.94
-
-## System Notes
-- Tools are available for both authenticated users and guest users
-- **Automatic Detection**: The AI determines when to use tools based on message context
-- **Seamless Integration**: Tool results are naturally incorporated into responses
-- **Fallback Handling**: If tools are unavailable, the chatbot continues with its base knowledge
-
-The enhanced chatbot provides real-time search and calculation capabilities to improve user experience and information accuracy.
+## Tool Availability
+- Available for both authenticated users and guest users
+- Works across all conversation types and sessions
+- Integrated with conversation branching and editing features
+- Maintains tool context across message edits and branches

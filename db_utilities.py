@@ -703,3 +703,46 @@ def get_message_connected_from(message_id):
     finally:
         cur.close()
         conn.close()
+
+def title_exists_for_user(username, title, exclude_session_id=None):
+    """Check if a session with the given title already exists for the user."""
+    conn = sqlite3.connect('database.sqlite')
+    conn.execute('PRAGMA foreign_keys = ON;')
+    cur = conn.cursor()
+    try:
+        # Get user ID
+        cur.execute("SELECT id FROM user WHERE username = ?", (username,))
+        row = cur.fetchone()
+        if not row:
+            if debugging:
+                print(f"title_exists_for_user: User '{username}' not found")
+            return False
+        user_id = row[0]
+        
+        # Check for existing title (excluding current session if provided)
+        if exclude_session_id:
+            cur.execute(
+                "SELECT COUNT(*) FROM session WHERE user_id = ? AND title = ? AND id != ? AND (isDeleted IS NULL OR isDeleted != 'TRUE')",
+                (user_id, title, exclude_session_id)
+            )
+        else:
+            cur.execute(
+                "SELECT COUNT(*) FROM session WHERE user_id = ? AND title = ? AND (isDeleted IS NULL OR isDeleted != 'TRUE')",
+                (user_id, title)
+            )
+        
+        count = cur.fetchone()[0]
+        exists = count > 0
+        
+        if debugging:
+            print(f"title_exists_for_user: title '{title}' for user '{username}' exists: {exists}")
+        
+        return exists
+        
+    except sqlite3.Error as e:
+        if debugging:
+            print("SQLite error in title_exists_for_user:", e)
+        return True  # Return True on error to be safe
+    finally:
+        cur.close()
+        conn.close()
