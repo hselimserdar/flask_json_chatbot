@@ -3,8 +3,7 @@ from chatbot_manage import chat_with_gpt, create_session_for_user, update_sessio
 from user_process import compare_passwords, get_current_user, search_for_existing_user, add_new_user
 from db_utilities import (get_messages_for_session, is_session_owner,
                          delete_session_for_user, get_session_id_for_message,
-                         print_sessions, get_user_id, get_message_by_id,
-                         title_exists_for_user)
+                         print_sessions, get_user_id, get_message_by_id)
 from dotenv import load_dotenv
 import os
 import jwt
@@ -166,70 +165,6 @@ def delete_session():
         if debugging:
             print(f"Failed to delete session {session_id} for user {user}")
         return {"message": "Internal error: could not delete session."}, 500
-
-@app.route('/chatbot/session/update', methods=['POST'])
-def update_session():
-    user = get_current_user() or "guest"
-    
-    if debugging:
-        print(f"update_session called by user={user}")
-
-    if user == "guest":
-        if debugging:
-            print("Guest user attempted to update a session")
-        return {"message": "Forbidden: Guests cannot update sessions."}, 403
-
-    try:
-        data = request.get_json()
-        if not data:
-            return {"message": "JSON data is required."}, 400
-            
-        session_id = data.get('session_id')
-        new_title = data.get('title', '').strip()
-        
-        if debugging:
-            print(f"Update request: session_id={session_id}, new_title='{new_title}'")
-        
-        if not session_id:
-            return {"message": "Session ID is required."}, 400
-            
-        if not new_title:
-            return {"message": "Title cannot be empty."}, 400
-            
-        # Validate title length
-        if len(new_title) > 100:
-            return {"message": "Title cannot be longer than 100 characters."}, 400
-        
-        # Check if user owns the session
-        if not is_session_owner(user, session_id):
-            if debugging:
-                print(f"User {user} is not owner of session {session_id}")
-            return {"message": "Forbidden: You do not have access to this session."}, 403
-        
-        # Check if title already exists for this user
-        if title_exists_for_user(user, new_title, session_id):
-            return {"message": "A session with this title already exists."}, 409
-            
-        # Update the session title
-        success = update_session_title(session_id, new_title)
-        
-        if success:
-            if debugging:
-                print(f"Session {session_id} title updated to '{new_title}' for user {user}")
-            return {
-                "message": "Session title updated successfully.",
-                "session_id": session_id,
-                "title": new_title
-            }
-        else:
-            if debugging:
-                print(f"Failed to update session {session_id} title for user {user}")
-            return {"message": "Failed to update session title."}, 500
-            
-    except Exception as e:
-        if debugging:
-            print(f"Error in update_session: {e}")
-        return {"message": "Internal server error."}, 500
 
 @app.route('/chatbot/message', methods=['GET'])
 def session_messages():
@@ -678,6 +613,48 @@ def get_tree_path():
         if debugging:
             print(f"Error retrieving tree path: {str(e)}")
         return {"error": f"Failed to retrieve tree path: {str(e)}"}, 500
+
+@app.route('/update_session_title', methods=['POST'])
+def update_session_title_route():
+    try:
+        user = get_current_user() or "guest"
+        
+        if user == "guest":
+            if debugging:
+                print("Guest user attempted to update session title")
+            return {"error": "Forbidden: Guest users cannot update session titles."}, 403
+        
+        data = request.get_json() or {}
+        session_id = data.get('session_id')
+        new_title = data.get('title')
+        
+        if not session_id or not new_title:
+            if debugging:
+                print("Missing session_id or title in update request")
+            return {"error": "Missing session_id or title"}, 400
+        
+        # Check if user owns the session
+        if not is_session_owner(user, session_id):
+            if debugging:
+                print(f"User {user} is not authorized to update title for session: {session_id}")
+            return {"error": "Forbidden: You do not have access to this session."}, 403
+        
+        # Update the session title
+        success = update_session_title(session_id, new_title)
+        
+        if success:
+            if debugging:
+                print(f"Session title updated successfully for {session_id}: {new_title}")
+            return {"success": True, "message": "Session title updated successfully"}, 200
+        else:
+            if debugging:
+                print(f"Failed to update session title for {session_id}")
+            return {"error": "Failed to update session title"}, 500
+        
+    except Exception as e:
+        if debugging:
+            print(f"Error updating session title: {str(e)}")
+        return {"error": f"Failed to update session title: {str(e)}"}, 500
 
 @app.route('/chatbot.html')
 def chatbot_page():

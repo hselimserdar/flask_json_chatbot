@@ -68,6 +68,27 @@
                 max-width: 100% !important;
             }
             
+            /* Force portrait orientation on mobile */
+            @media screen and (orientation: landscape) and (max-height: 500px) {
+                body::before {
+                    content: "Please rotate your device to portrait mode for the best experience";
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.9);
+                    color: white;
+                    display: flex;
+                    align-items: center;
+                    justify-content: center;
+                    text-align: center;
+                    font-size: 1.1rem;
+                    z-index: 9999;
+                    padding: 2rem;
+                }
+            }
+            
             .user-message, .bot-message {
                 max-width: calc(100% - 1rem) !important;
                 word-wrap: break-word !important;
@@ -78,95 +99,67 @@
                 margin-right: 1rem !important;
             }
             
+            /* Reduce space after bot messages on mobile (except last message) */
+            .bot-message:not(:last-child) {
+                margin-bottom: 0.4rem !important;
+            }
+            
             .message-content {
                 max-width: 100% !important;
                 word-break: break-word !important;
             }
         }
 
-        /* Session edit controls - cache busting */
+        /* Session title editing styles */
         .session-actions {
-            display: flex !important;
-            align-items: center !important;
-            gap: 0.25rem !important;
-            margin-left: 0.5rem !important;
-            flex-shrink: 0 !important;
+            display: flex;
+            gap: 0.25rem;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+
+        .session-item:hover .session-actions {
+            opacity: 1;
         }
 
         .session-edit-btn {
-            background: none !important;
-            border: none !important;
-            cursor: pointer !important;
-            padding: 0.25rem !important;
-            border-radius: 4px !important;
-            opacity: 0 !important;
-            transition: all 0.2s ease !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            color: #6b7280 !important;
+            background: none;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 0.25rem;
+            cursor: pointer;
+            color: var(--text-secondary);
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 24px;
+            height: 24px;
         }
 
         .session-edit-btn:hover {
-            background-color: rgba(59, 130, 246, 0.1) !important;
-            color: #3b82f6 !important;
+            background-color: var(--bg-accent);
+            border-color: var(--border-hover);
+            color: var(--text-primary);
         }
 
-        .session-item:hover .session-edit-btn {
-            opacity: 1 !important;
+        .session-title {
+            cursor: pointer;
+            transition: color 0.2s ease;
         }
 
-        .session-item.active .session-edit-btn {
-            color: rgba(255, 255, 255, 0.8) !important;
+        .session-title:hover {
+            color: var(--primary-color);
         }
 
-        .session-item.active .session-edit-btn:hover {
-            background-color: rgba(255, 255, 255, 0.1) !important;
-            color: white !important;
-        }
-
-        /* Success notification */
-        .success-notification {
-            position: fixed !important;
-            top: 1rem !important;
-            right: 1rem !important;
-            z-index: 9999 !important;
-            background: #10b981 !important;
-            color: white !important;
-            padding: 1rem !important;
-            border-radius: 8px !important;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
-            max-width: 400px !important;
-        }
-
-        .success-content {
-            display: flex !important;
-            align-items: center !important;
-            gap: 0.5rem !important;
-        }
-
-        .success-close {
-            background: none !important;
-            border: none !important;
-            color: white !important;
-            cursor: pointer !important;
-            font-size: 1.25rem !important;
-            margin-left: auto !important;
-        }
-
-        /* Mobile session edit controls */
         @media (max-width: 768px) {
-            .session-edit-btn {
-                opacity: 1 !important;
-                width: 36px !important;
-                height: 36px !important;
-                background-color: rgba(107, 114, 128, 0.1) !important;
-                border: 1px solid rgba(107, 114, 128, 0.2) !important;
-                border-radius: 8px !important;
+            .session-actions {
+                opacity: 1; /* Always show on mobile */
             }
             
-            .session-edit-btn:active {
-                transform: scale(0.95) !important;
+            .session-edit-btn {
+                min-width: 32px;
+                min-height: 32px;
             }
         }
     </style>
@@ -1284,10 +1277,9 @@
                         <div class="session-date">${createdAt}</div>
                     </div>
                     <div class="session-actions">
-                        <button class="session-edit-btn" title="Edit session title" onclick="editSessionTitle(event, '${session.id}', '${(session.title || 'Session ' + session.id).replace(/'/g, '\\\'')}')" style="display: none;">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                <path d="M12 20h9"></path>
-                                <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                        <button class="session-edit-btn" title="Edit session title" onclick="event.stopPropagation(); editSessionTitle('${session.id}')">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
                             </svg>
                         </button>
                         <button class="session-delete-btn" title="Delete session" onclick="deleteSession(event, '${session.id}')">
@@ -1302,8 +1294,8 @@
                 `;
 
                 sessionDiv.addEventListener('click', (e) => {
-                    // Don't load session if edit or delete button was clicked
-                    if (!e.target.closest('.session-edit-btn') && !e.target.closest('.session-delete-btn')) {
+                    // Don't load session if delete button was clicked
+                    if (!e.target.closest('.session-delete-btn')) {
                         // Close mobile sidebar when session is selected
                         const sidebar = document.getElementById('sessionsSidebar');
                         if (sidebar && sidebar.classList.contains('mobile-open')) {
@@ -1313,125 +1305,6 @@
                     }
                 });
                 sessionsList.appendChild(sessionDiv);
-            });
-        }
-
-        async function editSessionTitle(event, sessionId, currentTitle) {
-            event.preventDefault();
-            event.stopPropagation();
-            
-            if (isGuest) {
-                showErrorMessage('Session editing is only available for authenticated users.');
-                return;
-            }
-            
-            // Create a temporary input field
-            const input = document.createElement('input');
-            input.type = 'text';
-            input.value = currentTitle;
-            input.className = 'session-title-edit-input';
-            input.maxLength = 100;
-            
-            // Find the session div and title element
-            const sessionDiv = document.querySelector(`[data-session-id="${sessionId}"]`);
-            const titleElement = sessionDiv.querySelector('.session-title');
-            const originalText = titleElement.textContent;
-            
-            // Replace title with input
-            titleElement.style.display = 'none';
-            titleElement.parentNode.insertBefore(input, titleElement.nextSibling);
-            
-            // Focus and select all text
-            input.focus();
-            input.select();
-            
-            let isEditing = true;
-            
-            const saveEdit = async () => {
-                if (!isEditing) return;
-                isEditing = false;
-                
-                const newTitle = input.value.trim();
-                
-                if (!newTitle) {
-                    showErrorMessage('Session title cannot be empty.');
-                    cancelEdit();
-                    return;
-                }
-                
-                if (newTitle === currentTitle) {
-                    cancelEdit();
-                    return;
-                }
-                
-                try {
-                    const currentToken = localStorage.getItem('token');
-                    if (!currentToken) {
-                        showErrorMessage('Authentication required. Please log in again.');
-                        cancelEdit();
-                        return;
-                    }
-                    
-                    const response = await fetch('/chatbot/session/update', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${currentToken}`,
-                        },
-                        body: JSON.stringify({
-                            session_id: sessionId,
-                            title: newTitle
-                        })
-                    });
-                    
-                    const data = await response.json();
-                    
-                    if (response.ok) {
-                        // Update the title in the UI
-                        titleElement.textContent = newTitle;
-                        titleElement.style.display = '';
-                        input.remove();
-                        showSuccessMessage('Session title updated successfully.');
-                        
-                        // Update browser title if this is the current session
-                        if (currentSessionId === sessionId) {
-                            document.title = `${newTitle} - Flask Chatbot`;
-                        }
-                    } else {
-                        showErrorMessage(data.message || 'Failed to update session title.');
-                        cancelEdit();
-                    }
-                } catch (error) {
-                    console.error('Error updating session title:', error);
-                    showErrorMessage('Network error occurred while updating session title.');
-                    cancelEdit();
-                }
-            };
-            
-            const cancelEdit = () => {
-                if (input && input.parentNode) {
-                    titleElement.style.display = '';
-                    input.remove();
-                }
-                isEditing = false;
-            };
-            
-            // Handle Enter key
-            input.addEventListener('keydown', (e) => {
-                if (e.key === 'Enter') {
-                    e.preventDefault();
-                    saveEdit();
-                } else if (e.key === 'Escape') {
-                    e.preventDefault();
-                    cancelEdit();
-                }
-            });
-            
-            // Handle clicking outside
-            input.addEventListener('blur', () => {
-                if (isEditing) {
-                    saveEdit();
-                }
             });
         }
 
@@ -1463,6 +1336,128 @@
                 if (titleElement) {
                     titleElement.textContent = newTitle || `Session ${sessionId}`;
                 }
+            }
+        }
+
+        // Session title editing functionality (hardened)
+        function editSessionTitle(sessionId, titleElement) {
+            if (isGuest) {
+                return showErrorMessage('Session title editing is only available for authenticated users.');
+            }
+
+            const sessionDiv = document.querySelector(`[data-session-id="${sessionId}"]`);
+            if (!sessionDiv) return;
+
+            const titleEl = titleElement || sessionDiv.querySelector('.session-title');
+            if (!titleEl) return;
+
+            // Prevent multiple inputs at once
+            if (sessionDiv.querySelector('.session-title-input')) return;
+
+            const currentTitle = titleEl.textContent.trim();
+
+            const input = document.createElement('input');
+            input.type = 'text';
+            input.value = currentTitle;
+            input.className = 'session-title-input';
+            input.setAttribute('maxlength', '120');
+            input.setAttribute('aria-label', 'Edit session title');
+            input.style.cssText = `
+                width: 100%;
+                background: transparent;
+                border: 1px solid var(--primary-color);
+                border-radius: 6px;
+                padding: 4px 8px;
+                font-size: inherit;
+                font-family: inherit;
+                color: inherit;
+            `;
+
+            titleEl.style.display = 'none';
+            titleEl.parentNode.insertBefore(input, titleEl.nextSibling);
+
+            input.focus();
+            input.select();
+
+            let saving = false;
+
+            async function finalize(newTitle, revert = false) {
+                titleEl.textContent = revert ? currentTitle : (newTitle || currentTitle);
+                titleEl.style.display = '';
+                input.remove();
+            }
+
+            async function saveTitle() {
+                if (saving) return;
+                let newTitle = input.value.trim();
+
+                // No change → just restore
+                if (!newTitle || newTitle === currentTitle) {
+                    return finalize(currentTitle);
+                }
+
+                try {
+                    saving = true;
+                    input.disabled = true;
+
+                    const ok = await updateSessionTitleAPI(sessionId, newTitle);
+                    if (ok) {
+                        updateSessionTitleInSidebar?.(sessionId, newTitle);
+                        showSuccessMessage?.('Session title updated successfully');
+                        return finalize(newTitle);
+                    } else {
+                        showErrorMessage?.('Failed to update session title');
+                        return finalize(currentTitle, true);
+                    }
+                } catch (err) {
+                    showErrorMessage?.('Error updating session title: ' + (err?.message || err));
+                    return finalize(currentTitle, true);
+                } finally {
+                    saving = false;
+                    input.disabled = false;
+                }
+            }
+
+            function cancelEdit() {
+                finalize(currentTitle, true);
+            }
+
+            input.addEventListener('keydown', (e) => {
+                e.stopPropagation();
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    saveTitle();
+                } else if (e.key === 'Escape') {
+                    e.preventDefault();
+                    cancelEdit();
+                }
+            });
+
+            input.addEventListener('blur', saveTitle);
+            input.addEventListener('click', (e) => e.stopPropagation());
+        }
+
+        // Return boolean for success/fail and include optional CSRF
+        async function updateSessionTitleAPI(sessionId, newTitle) {
+            const currentToken = localStorage.getItem('token');
+            const headers = { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${currentToken}`
+            };
+
+            try {
+                const res = await fetch('/update_session_title', {
+                    method: 'POST',
+                    headers,
+                    body: JSON.stringify({ session_id: sessionId, title: newTitle })
+                });
+
+                if (!res.ok) return false;
+                const data = await res.json().catch(() => ({}));
+                return !!data?.success;
+            } catch (error) {
+                console.error('Session title update error:', error);
+                return false;
             }
         }
 
@@ -2394,8 +2389,11 @@
             controlsDiv.className = 'user-edit-controls';
             controlsDiv.id = `edit-controls-${messageData.id}`;
             
+            // Store original message in data attribute for accurate retrieval
+            messageDiv.setAttribute('data-original-message', originalMessage);
+            
             controlsDiv.innerHTML = `
-                <button class="edit-message-btn" onclick="editUserMessage('${messageData.id}', '${originalMessage.replace(/'/g, "\\'")}')">
+                <button class="edit-message-btn" onclick="editUserMessage('${messageData.id}')">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
                     </svg>
@@ -2444,7 +2442,7 @@
             return navigationDiv;
         }
         
-        async function editUserMessage(messageId, originalMessage) {
+        async function editUserMessage(messageId) {
             if (!currentSessionId || isGuest) {
                 showErrorMessage('Editing is only available for authenticated users in saved sessions.');
                 return;
@@ -2457,6 +2455,16 @@
                 return;
             }
             
+            // Get current message text from the message content (not from stored original)
+            const messageContentElement = messageDiv.querySelector('.message-content');
+            if (!messageContentElement) {
+                showErrorMessage('Message content not found.');
+                return;
+            }
+            
+            // Extract current text content, removing any HTML formatting
+            const currentMessage = messageContentElement.textContent || messageContentElement.innerText || '';
+            
             // Show cancel button and hide edit button
             const editBtn = messageDiv.querySelector('.edit-message-btn');
             const cancelBtn = messageDiv.querySelector('.cancel-edit-btn');
@@ -2464,8 +2472,8 @@
             if (editBtn) editBtn.style.display = 'none';
             if (cancelBtn) cancelBtn.style.display = 'inline-flex';
             
-            // Start inline editing
-            startInlineEdit(messageDiv, messageId, originalMessage);
+            // Start inline editing with current message content
+            startInlineEdit(messageDiv, messageId, currentMessage.trim());
         }
         
         function cancelUserMessageEdit(messageId) {
@@ -2500,10 +2508,44 @@
             const editContainer = document.createElement('div');
             editContainer.className = 'inline-edit-container';
             
+            // Prevent edit container events from triggering session selection
+            editContainer.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+            
+            editContainer.addEventListener('touchstart', (e) => {
+                e.stopPropagation();
+            });
+            
+            editContainer.addEventListener('touchend', (e) => {
+                e.stopPropagation();
+            });
+            
             const textarea = document.createElement('textarea');
             textarea.className = 'inline-edit-textarea';
             textarea.value = originalMessage;
             textarea.rows = Math.max(2, originalMessage.split('\n').length);
+            
+            // Prevent mobile touch events from propagating to parent elements
+            textarea.addEventListener('touchstart', (e) => {
+                e.stopPropagation();
+            });
+            
+            textarea.addEventListener('touchmove', (e) => {
+                e.stopPropagation();
+            });
+            
+            textarea.addEventListener('touchend', (e) => {
+                e.stopPropagation();
+            });
+            
+            textarea.addEventListener('click', (e) => {
+                e.stopPropagation();
+            });
+            
+            textarea.addEventListener('focus', (e) => {
+                e.stopPropagation();
+            });
             
             const buttonContainer = document.createElement('div');
             buttonContainer.className = 'inline-edit-buttons';
@@ -3732,6 +3774,17 @@
             if (sidebar && sidebar.classList.contains('mobile-open')) {
                 sidebar.classList.remove('mobile-open');
             }
+            
+            // Force portrait orientation on mobile devices
+            setTimeout(() => {
+                if (window.innerHeight < window.innerWidth && window.innerHeight < 500) {
+                    // Device is in landscape and appears to be mobile - show rotation message
+                    document.body.style.overflow = 'hidden';
+                } else {
+                    // Device is in portrait or desktop - restore normal behavior
+                    document.body.style.overflow = '';
+                }
+            }, 100);
         });
 
         // Initialize on page load

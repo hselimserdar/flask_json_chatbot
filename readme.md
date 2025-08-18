@@ -5,14 +5,11 @@ A modern Flask-based chatbot application with ChatGPT-style conversation branchi
 ## Features
 
 - **Conversation Branching**: ChatGPT-style message editing and branch navigation
-- **Advanced Edit Controls**: Inline message editing with cancel button and ESC key support
 - **Tool Calling**: Web search and mathematical calculations powered by Gemini 2.0 Flash
 - **User Authentication**: Secure login/register system with JWT tokens
 - **Session Management**: Save and manage conversation sessions
 - **Guest Mode**: Try the chatbot without registration
-- **Mobile Optimized**: Fully responsive design with mobile-first approach
-- **Enhanced UX**: Improved scrollbars, copy buttons, and typing indicators
-- **Cross-Browser Support**: Optimized for Chrome, Firefox, Safari, Opera, and Edge
+- **Responsive Design**: Modern UI that works on desktop and mobile
 
 ## Quick Setup
 
@@ -47,14 +44,11 @@ A modern Flask-based chatbot application with ChatGPT-style conversation branchi
 
 ## Usage
 
-- **Chat**: Type messages and receive AI responses with smooth typing indicators
-- **Edit Messages**: Click edit button next to any message, use X to cancel or ESC key on desktop
+- **Chat**: Type messages and receive AI responses
 - **Branch Conversations**: Edit previous messages to create conversation branches
 - **Navigate Branches**: Use navigation controls to switch between different conversation paths
 - **Search Web**: Ask questions that require current information
 - **Calculate**: Request mathematical calculations and evaluations
-- **Mobile Experience**: Optimized touch interface with proper keyboard handling
-- **Copy Content**: Enhanced copy buttons with improved visibility for easy content sharing
 
 ## Advanced Features
 
@@ -64,23 +58,8 @@ For detailed information about tool calling capabilities, web search, and mathem
 
 - Python 3.8+
 - Flask
-- Google Gemini API access (or DeepSeek R1)
-- Modern web browser (Chrome, Firefox, Safari, Opera, Edge)
-- Mobile device support (iOS Safari, Android Chrome)
-
-## Browser Compatibility
-
-**Desktop Support:**
-- Chrome 90+
-- Firefox 88+
-- Safari 14+
-- Opera 76+
-- Edge 90+
-
-**Mobile Support:**
-- iOS Safari 14+
-- Android Chrome 90+
-- Samsung Internet 14+
+- Google Gemini API access
+- Modern web browser
 
 ## Security Notes
 
