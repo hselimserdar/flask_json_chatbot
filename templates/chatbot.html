@@ -9,7 +9,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default">
     <title>HSS GPT</title>
     <link rel="icon" type="image/png" href="{{ url_for('static', filename='icons/50px-logo.png') }}">
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20250814151">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}?v=20250818001">
     <style>
         /* Force scrollbar styles with inline CSS for immediate effect */
         .chat-messages::-webkit-scrollbar,
@@ -89,6 +89,22 @@
                 }
             }
             
+            /* Force active session hover fix - inline CSS for cache busting */
+            .sessions-sidebar .session-item.active:hover,
+            #sessionsSidebar .session-item.active:hover,
+            .session-item.active:hover {
+                background-color: #2563eb !important; /* var(--primary-color) hard-coded */
+                color: white !important;
+                border-color: #2563eb !important; /* var(--primary-color) hard-coded */
+                transform: none !important;
+            }
+            
+            .sessions-sidebar .session-item:hover:not(.active),
+            #sessionsSidebar .session-item:hover:not(.active),
+            .session-item:hover:not(.active) {
+                background-color: #f1f5f9 !important; /* var(--bg-accent) hard-coded */
+            }
+            
             .user-message, .bot-message {
                 max-width: calc(100% - 1rem) !important;
                 word-wrap: break-word !important;
@@ -148,8 +164,12 @@
             transition: color 0.2s ease;
         }
 
-        .session-title:hover {
+        .session-item:not(.active) .session-title:hover {
             color: var(--primary-color);
+        }
+
+        .session-item.active .session-title:hover {
+            color: white !important;
         }
 
         @media (max-width: 768px) {
@@ -3791,6 +3811,33 @@
         document.addEventListener('DOMContentLoaded', function() {
             // Setup all event listeners first
             setupEventListeners();
+            
+            // Force fix active session hover with JavaScript
+            function setupActiveSessionHoverFix() {
+                const style = document.createElement('style');
+                style.textContent = `
+                    .session-item.active:hover {
+                        background-color: var(--primary-color) !important;
+                        color: white !important;
+                        border-color: var(--primary-color) !important;
+                    }
+                `;
+                document.head.appendChild(style);
+                
+                // Also add event listeners to prevent hover effects
+                const sessionItems = document.querySelectorAll('.session-item.active');
+                sessionItems.forEach(item => {
+                    item.addEventListener('mouseenter', function(e) {
+                        if (this.classList.contains('active')) {
+                            this.style.backgroundColor = 'var(--primary-color)';
+                            this.style.color = 'white';
+                        }
+                    });
+                });
+            }
+            
+            // Call the fix function
+            setupActiveSessionHoverFix();
             
             // Set initial viewport height
             setViewportHeight();

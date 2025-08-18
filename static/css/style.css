@@ -1134,8 +1134,13 @@ html, body {
     position: relative;
 }
 
-.session-item:hover {
+.session-item:hover:not(.active) {
     background-color: var(--bg-accent);
+}
+
+/* Active session hover - no color change to maintain text visibility */
+.session-item.active:hover {
+    background-color: var(--primary-color);
 }
 
     .session-item:hover .session-delete-btn {
@@ -2063,7 +2068,7 @@ footer {
         justify-content: space-between;
     }
 
-    .session-item:hover {
+    .session-item:hover:not(.active) {
         background-color: var(--bg-accent);
         border-color: var(--border-hover);
         transform: translateY(-1px);
